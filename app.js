@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = 26; // igual que VERSION en sw.js
+const APP_VERSION = 27; // igual que VERSION en sw.js
 
 /* ============ Estado y almacenamiento ============ */
 const KEY = 'gymlog.v1';
@@ -50,6 +50,15 @@ function isoWeek(d) {
   const x = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   x.setUTCDate(x.getUTCDate() + 3 - ((x.getUTCDay() + 6) % 7)); // jueves de esa semana
   return 1 + Math.floor((x - Date.UTC(x.getUTCFullYear(), 0, 1)) / 864e5 / 7);
+}
+const hhmm = (d) => { const x = new Date(d); return String(x.getHours()).padStart(2, '0') + ':' + String(x.getMinutes()).padStart(2, '0'); };
+// Minutos entre la hora de inicio del entreno y la hora de fin (si la de fin es menor, pasó la medianoche)
+function pastDuration(a) {
+  if (!a.endTime) return 0;
+  const s = new Date(a.date); const [h, m] = a.endTime.split(':').map(Number);
+  let mins = h * 60 + m - (s.getHours() * 60 + s.getMinutes());
+  if (mins <= 0) mins += 1440;
+  return mins;
 }
 function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
 function fmtDate(d, opts = { weekday: 'short', day: 'numeric', month: 'short' }) {
@@ -283,7 +292,7 @@ function go(t) {
 const TITLES = { home: 'Actividad', routines: 'Sesiones', routineEdit: 'Editar sesión', routineImport: 'Importar sesiones', train: 'Entrenar', history: 'Historial', progress: 'Progreso', report: 'Informe semanal', settings: 'Ajustes' };
 
 function render() {
-  $('#title').textContent = TITLES[tab] || 'GymLog';
+  $('#title').textContent = tab === 'train' && S.active && S.active.past ? (S.active.editingId ? 'Editar entreno' : 'Registrar entreno') : (TITLES[tab] || 'GymLog');
   document.querySelectorAll('.tabbar button').forEach((b) => {
     b.classList.toggle('active', b.dataset.tab === tab || ((tab === 'routineEdit' || tab === 'routineImport') && b.dataset.tab === 'routines'));
   });
@@ -360,7 +369,8 @@ function viewHome() {
       <div class="stat"><b>${S.sessions.length}</b><span>${S.sessions.length === 1 ? 'entreno' : 'entrenos'} en total</span></div>
     </div>
     ${S.active ? `<button class="primary block" style="margin-top:12px" data-act="go" data-tab="train">Continuar entreno en curso</button>`
-      : `<button class="primary block" style="margin-top:12px" data-act="go" data-tab="train">Empezar entrenamiento</button>`}
+      : `<button class="primary block" style="margin-top:12px" data-act="go" data-tab="train">Empezar entrenamiento</button>
+         <button class="block" style="margin-top:8px" data-act="pastPick">Registrar entreno ya hecho</button>`}
     <h2>Constancia</h2>
     <div class="card"><div class="heat">${grid}</div></div>
     <h2>Días por semana</h2>
@@ -445,18 +455,31 @@ function viewRoutineEdit() {
   `;
 }
 
+let pastPicking = false;
 function viewTrain() {
+  if (!S.active && pastPicking) {
+    const opts = S.routines.map((r) => `<button class="block pick" style="margin-bottom:8px;text-align:left" data-act="startPast" data-id="${r.id}"><b>${esc(r.name)}</b><br><span class="muted small">${r.exercises.length} ejercicios</span></button>`).join('');
+    return `
+      <h2>¿Qué sesión hiciste?</h2>
+      ${opts}
+      <button class="primary block" data-act="startPast" data-id="">Entreno libre</button>
+      <button class="block" style="margin-top:10px" data-act="pastCancel">Cancelar</button>
+      <p class="muted small" style="margin-top:12px">Después eliges el día y las horas de inicio y fin, y apuntas las series que hiciste.</p>
+    `;
+  }
   if (!S.active) {
     const opts = S.routines.map((r) => `<button class="block pick" style="margin-bottom:8px;text-align:left" data-act="startRoutine" data-id="${r.id}"><b>${esc(r.name)}</b><br><span class="muted small">${r.exercises.length} ejercicios</span></button>`).join('');
     return `
       <h2>¿Qué toca hoy?</h2>
       ${opts || '<p class="muted">No tienes sesiones aún. Puedes crear una en "Sesiones" o hacer un entreno libre.</p>'}
       <button class="primary block" data-act="startFree">Entreno libre</button>
+      <h2>¿Ya has entrenado?</h2>
+      <button class="block" data-act="pastPick">Registrar entreno ya hecho</button>
     `;
   }
   const a = S.active;
   const exs = a.exercises.map((ex, i) => {
-    const last = lastPerformance(ex.name, null, a.id);
+    const last = lastPerformance(ex.name, a.past ? a.date : null, a.editingId || a.id);
     const target = ex.target ? `<b class="num-red">Objetivo:</b> ${esc(ex.target)}` : '';
     const sets = ex.sets.map((st, j) => `
       <div class="set ${st.done ? 'done' : ''}">
@@ -480,24 +503,36 @@ function viewTrain() {
       </div>`;
   }).join('');
   const startLocal = (() => { const d = new Date(a.date); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); })();
-  return `
+  const head = a.past ? `
+    <div class="card ex-card">
+      <h3>${esc(a.routineName || 'Entreno libre')}</h3>
+      <label>Día</label>
+      <input type="date" data-wbind="pdate" value="${ymd(a.date)}" max="${ymd(new Date())}">
+      <div class="row">
+        <div class="grow"><label>Hora de inicio</label><input type="time" data-wbind="pstart" value="${hhmm(a.date)}"></div>
+        <div class="grow"><label>Hora de fin</label><input type="time" data-wbind="pend" value="${esc(a.endTime || '')}"></div>
+      </div>
+      <p class="muted small" style="margin-top:8px">Duración: <b id="pdur">${fmtDur(pastDuration(a))}</b></p>
+    </div>` : `
     <div class="row between" style="margin-bottom:10px">
       <div><b>${esc(a.routineName || 'Entreno libre')}</b><br><span class="muted small">Tiempo: <span id="elapsed" class="elapsed">—</span></span></div>
-    </div>
+    </div>`;
+  return `
+    ${head}
     ${exs}
     <button class="block" data-act="exAdd">+ Añadir ejercicio</button>
-    <h2>Terminar</h2>
+    <h2>${a.past ? 'Guardar' : 'Terminar'}</h2>
     <div class="card">
-      <label>Fecha y hora de inicio</label>
+      ${a.past ? '' : `<label>Fecha y hora de inicio</label>
       <input type="datetime-local" data-wbind="date" value="${startLocal}">
       <label>Duración (min) — vacío = automática</label>
-      <input inputmode="numeric" data-wbind="durationManual" value="${esc(a.durationManual || '')}" placeholder="auto">
+      <input inputmode="numeric" data-wbind="durationManual" value="${esc(a.durationManual || '')}" placeholder="auto">`}
       <label>Energía / sensaciones (1 = fatal, 5 = genial)</label>
       <select data-wbind="energy">${['', 1, 2, 3, 4, 5].map((n) => `<option ${String(a.energy || '') === String(n) ? 'selected' : ''} value="${n}">${n || '—'}</option>`).join('')}</select>
       <label>Notas (molestias, sueño, qué costó…)</label>
       <textarea data-wbind="notes" placeholder="Ej.: hombro derecho molesta en press; dormí 6 h">${esc(a.notes || '')}</textarea>
-      <button class="primary block" style="margin-top:12px" data-act="finish">Terminar y guardar</button>
-      <button class="danger block" style="margin-top:8px" data-act="discard">Descartar entreno</button>
+      <button class="primary block" style="margin-top:12px" data-act="finish">${a.past ? 'Guardar entreno' : 'Terminar y guardar'}</button>
+      <button class="danger block" style="margin-top:8px" data-act="discard">${a.editingId ? 'Cancelar cambios' : 'Descartar entreno'}</button>
     </div>
   `;
 }
@@ -785,7 +820,9 @@ function finishWorkout() {
     .filter((ex) => ex.name && ex.sets.length);
   if (!exercises.length) { toast('Registra al menos una serie con repeticiones'); return; }
   const auto = a.startedAt ? (Date.now() - a.startedAt) / 60000 : 0;
-  const duration = num(a.durationManual) || Math.min(Math.round(auto), 240);
+  if (a.past && !a.endTime) { toast('Pon la hora de fin del entreno'); return; }
+  if (a.past && new Date(a.date) > new Date()) { toast('La hora de inicio no puede ser futura'); return; }
+  const duration = a.past ? pastDuration(a) : (num(a.durationManual) || Math.min(Math.round(auto), 240));
   const session = { id: a.editingId || a.id, date: a.date, routineId: a.routineId, routineName: a.routineName, exercises, notes: (a.notes || '').trim(), energy: a.energy || '', duration };
   S.sessions = S.sessions.filter((s) => s.id !== session.id);
   S.sessions.push(session);
@@ -838,6 +875,21 @@ const actions = {
     if (S.active && !confirm('Ya tienes un entreno en curso. ¿Descartarlo y empezar otro?')) return;
     S.active = newActive(S.routines.find((r) => r.id === el.dataset.id)); save(); go('train');
   },
+  pastPick: () => {
+    if (S.active && !confirm('Tienes un entreno en curso. ¿Descartarlo para registrar otro?')) return;
+    S.active = null; save(); pastPicking = true; go('train');
+  },
+  pastCancel: () => { pastPicking = false; render(); },
+  startPast: (el) => {
+    const r = el.dataset.id ? S.routines.find((x) => x.id === el.dataset.id) : null;
+    const a = newActive(r);
+    // Por defecto: terminó ahora (redondeado a 5 min) y duró 1 hora
+    const end = new Date(); end.setMinutes(end.getMinutes() - (end.getMinutes() % 5), 0, 0);
+    a.date = new Date(end - 60 * 60000).toISOString(); a.endTime = hhmm(end);
+    a.past = true; a.startedAt = null;
+    if (!r) a.exercises.push({ name: '', rest: 90, sets: [{ w: '', r: '', done: false }] });
+    S.active = a; pastPicking = false; save(); go('train');
+  },
   startFree: () => { S.active = newActive(null); S.active.exercises.push({ name: '', rest: 90, sets: [{ w: '', r: '', done: false }] }); save(); render(); },
   exAdd: () => { S.active.exercises.push({ name: '', rest: 90, sets: [{ w: '', r: '', done: false }] }); save(); render(); },
   exDel: (el) => { if (confirm('¿Quitar este ejercicio del entreno?')) { S.active.exercises.splice(+el.dataset.i, 1); save(); render(); } },
@@ -851,7 +903,7 @@ const actions = {
     st.done = !st.done;
     if (st.done) { if (st.w === '' && st.pw) st.w = st.pw; if (st.r === '' && st.pr) st.r = st.pr; }
     save(); render();
-    if (st.done) startRest(ex.rest || 90);
+    if (st.done && !S.active.past) startRest(ex.rest || 90);
   },
   finish: () => finishWorkout(),
   discard: () => { if (confirm('¿Descartar el entreno en curso? Se perderá lo registrado.')) { S.active = null; save(); stopRest(); go('home'); } },
@@ -859,7 +911,7 @@ const actions = {
   sessEdit: (el) => {
     if (S.active && !confirm('Tienes un entreno en curso. ¿Descartarlo para editar este?')) return;
     const s = S.sessions.find((x) => x.id === el.dataset.id);
-    S.active = { id: uid(), editingId: s.id, date: s.date, startedAt: null, durationManual: s.duration, routineId: s.routineId, routineName: s.routineName, notes: s.notes, energy: s.energy, exercises: s.exercises.map((e) => ({ name: e.name, rest: 90, sets: e.sets.map((st) => ({ w: st.w, r: st.r, done: true })) })) };
+    S.active = { id: uid(), editingId: s.id, date: s.date, startedAt: null, past: true, endTime: hhmm(new Date(new Date(s.date).getTime() + (s.duration || 60) * 60000)), routineId: s.routineId, routineName: s.routineName, notes: s.notes, energy: s.energy, exercises: s.exercises.map((e) => ({ name: e.name, rest: 90, sets: e.sets.map((st) => ({ w: st.w, r: st.r, done: true })) })) };
     save(); go('train');
   },
   heatDay: (el) => {
@@ -953,6 +1005,13 @@ document.addEventListener('input', (e) => {
     if (t.dataset.j !== undefined) S.active.exercises[+t.dataset.i].sets[+t.dataset.j][f] = t.value;
     else if (t.dataset.i !== undefined) S.active.exercises[+t.dataset.i][f] = t.value;
     else if (f === 'date') { if (t.value) S.active.date = new Date(t.value).toISOString(); }
+    else if (f === 'pdate' || f === 'pstart') {
+      const a = S.active; const day = f === 'pdate' ? t.value : ymd(a.date); const time = f === 'pstart' ? t.value : hhmm(a.date);
+      if (day && time) a.date = new Date(`${day}T${time}`).toISOString();
+      const el = $('#pdur'); if (el) el.textContent = fmtDur(pastDuration(a));
+    } else if (f === 'pend') {
+      S.active.endTime = t.value; const el = $('#pdur'); if (el) el.textContent = fmtDur(pastDuration(S.active));
+    }
     else S.active[f] = t.value;
     save();
   } else if (t.dataset.repnotes !== undefined) {
