@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = 28; // igual que VERSION en sw.js
+const APP_VERSION = 29; // igual que VERSION en sw.js
 
 /* ============ Estado y almacenamiento ============ */
 const KEY = 'gymlog.v1';
@@ -370,7 +370,7 @@ function viewHome() {
     </div>
     ${S.active ? `<button class="primary block" style="margin-top:12px" data-act="go" data-tab="train">Continuar entreno en curso</button>`
       : `<button class="primary block" style="margin-top:12px" data-act="go" data-tab="train">Empezar entrenamiento</button>
-         <button class="block" style="margin-top:8px" data-act="pastPick">Registrar entrenamiento finalizado</button>`}
+         <button class="block" style="margin-top:8px" data-act="pastPick">Registrar entrenamiento</button>`}
     <h2>Constancia</h2>
     <div class="card"><div class="heat">${grid}</div></div>
     <h2>Días por semana</h2>
@@ -474,7 +474,7 @@ function viewTrain() {
       ${opts || '<p class="muted">No tienes sesiones aún. Puedes crear una en "Sesiones" o hacer un entrenamiento libre.</p>'}
       <button class="primary block" data-act="startFree">Entrenamiento libre</button>
       <h2>¿Ya has entrenado?</h2>
-      <button class="block" data-act="pastPick">Registrar entrenamiento finalizado</button>
+      <button class="block" data-act="pastPick">Registrar entrenamiento</button>
     `;
   }
   const a = S.active;
