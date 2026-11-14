@@ -1,7 +1,7 @@
 {
   "name": "GymLog",
   "short_name": "GymLog",
-  "description": "Constancia, rutinas e informes semanales del gimnasio",
+  "description": "Constancia, sesiones e informes semanales del gimnasio",
   "lang": "es",
   "start_url": "./",
   "scope": "./",

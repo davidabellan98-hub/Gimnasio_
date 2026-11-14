@@ -1,5 +1,5 @@
 // Cache de la app para que funcione sin conexión. Sube VERSION al cambiar archivos.
-const VERSION = 'gymlog-v12';
+const VERSION = 'gymlog-v13';
 const FILES = ['./', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest', 'icons/apple-touch-icon.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {

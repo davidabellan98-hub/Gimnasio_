@@ -3,11 +3,11 @@
 App web instalable (PWA) para el iPhone que sirve para:
 
 - **Constancia**: objetivo de días por semana, racha de semanas cumplidas, mapa de las últimas 16 semanas y gráfico de días por semana.
-- **Rutinas**: crea rutinas con ejercicios, series, repeticiones, peso, descanso y notas.
+- **Sesiones**: crea sesiones (Torso, Pierna…) con ejercicios, series, repeticiones, peso, descanso y notas.
 - **Entrenar**: registra cada serie (kg y repeticiones). Muestra lo que hiciste la última vez, tiene un temporizador de descanso y un cronómetro de la sesión. Si la app se cierra a mitad de entreno, no se pierde nada.
 - **Progreso**: gráficas de evolución por ejercicio (1RM estimado, peso máximo, reps máximas o volumen), volumen y series por semana (últimas 12) y tabla de récords personales.
 - **Historial**: entrenos agrupados por semana, que puedes editar o borrar. También puedes registrar un entreno pasado cambiando la fecha.
-- **Informe semanal**: genera un `.md` con constancia, carga, sesiones, progresión por ejercicio, tabla de evolución de las últimas 8 semanas, tus rutinas y tus comentarios, listo para subirlo a tu proyecto de entrenador en Claude (ver [PROMPT_ENTRENADOR.md](PROMPT_ENTRENADOR.md)).
+- **Informe semanal**: genera un `.md` con constancia, carga, entrenos, progresión por ejercicio, tabla de evolución de las últimas 8 semanas, tus sesiones planificadas y tus comentarios, listo para subirlo a tu proyecto de entrenador en Claude (ver [PROMPT_ENTRENADOR.md](PROMPT_ENTRENADOR.md)).
 - **Copia de seguridad**: exporta e importa todos los datos en un `.json`.
 
 Todo funciona sin conexión y los datos se quedan **solo en tu iPhone**: no hay servidor ni cuentas.
@@ -26,7 +26,7 @@ Todo funciona sin conexión y los datos se quedan **solo en tu iPhone**: no hay 
 
 1. El domingo, abre **Informe**, escribe tus comentarios (molestias, sueño, objetivos) y pulsa **Compartir / Guardar → Guardar en Archivos**.
 2. Sube ese `.md` a tu proyecto «Entrenador personal» en Claude.
-3. Aplica los cambios que te proponga en **Rutinas**.
+3. Aplica los cambios que te proponga en **Sesiones**.
 
 ## Probar en el ordenador
 

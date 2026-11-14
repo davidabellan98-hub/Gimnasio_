@@ -171,7 +171,7 @@ function niceTicks(min, max, n = 4) {
 // points: [{x: Date, y: number}]
 function lineChart(points, unit) {
   const W = 340, H = 190, L = 40, R = 12, T = 14, B = 26;
-  if (points.length < 2) return '<p class="muted small">Necesitas al menos 2 sesiones de este ejercicio para ver la gráfica.</p>';
+  if (points.length < 2) return '<p class="muted small">Necesitas al menos 2 entrenos con este ejercicio para ver la gráfica.</p>';
   const xs = points.map((p) => +p.x), ys = points.map((p) => p.y);
   const x0 = Math.min(...xs), x1 = Math.max(...xs) || x0 + 1;
   const ticks = niceTicks(Math.min(...ys), Math.max(...ys));
@@ -215,7 +215,7 @@ let progMetric = null;
 
 function go(t) { tab = t; render(); window.scrollTo(0, 0); }
 
-const TITLES = { home: 'Actividad', routines: 'Rutinas', routineEdit: 'Editar rutina', train: 'Entrenar', history: 'Historial', progress: 'Progreso', report: 'Informe semanal', settings: 'Ajustes' };
+const TITLES = { home: 'Actividad', routines: 'Sesiones', routineEdit: 'Editar sesión', train: 'Entrenar', history: 'Historial', progress: 'Progreso', report: 'Informe semanal', settings: 'Ajustes' };
 
 function render() {
   $('#title').textContent = TITLES[tab] || 'GymLog';
@@ -315,8 +315,8 @@ function viewRoutines() {
       </div>
     </div>`).join('');
   return `
-    ${list || '<div class="empty">Aún no tienes rutinas.<br>Crea una (p. ej. "Torso", "Pierna", "Full body").</div>'}
-    <button class="primary block" data-act="newRoutine">+ Nueva rutina</button>
+    ${list || '<div class="empty">Aún no tienes sesiones.<br>Crea una (p. ej. "Torso", "Pierna", "Full body").</div>'}
+    <button class="primary block" data-act="newRoutine">+ Nueva sesión</button>
   `;
 }
 
@@ -343,9 +343,9 @@ function viewRoutineEdit() {
       <input data-rbind="notes" data-i="${i}" value="${esc(e.notes)}" placeholder="Técnica, tempo, agarre…">
     </div>`).join('');
   return `
-    <label>Nombre de la rutina</label>
+    <label>Nombre de la sesión</label>
     <input data-rbind="rname" value="${esc(r.name)}" placeholder="Ej.: Torso A">
-    <label>Objetivo / notas de la rutina</label>
+    <label>Objetivo / notas de la sesión</label>
     <input data-rbind="rnotes" value="${esc(r.notes || '')}" placeholder="Ej.: hipertrofia, 4 días/semana">
     <h2>Ejercicios</h2>
     ${exs || '<p class="muted">Añade el primer ejercicio.</p>'}
@@ -354,7 +354,7 @@ function viewRoutineEdit() {
       <button class="primary grow" data-act="routineSave">Guardar</button>
       <button data-act="go" data-tab="routines">Cancelar</button>
     </div>
-    ${S.routines.some((x) => x.id === r.id) ? `<button class="danger block" style="margin-top:10px" data-act="routineDelete">Eliminar rutina</button>` : ''}
+    ${S.routines.some((x) => x.id === r.id) ? `<button class="danger block" style="margin-top:10px" data-act="routineDelete">Eliminar sesión</button>` : ''}
   `;
 }
 
@@ -363,7 +363,7 @@ function viewTrain() {
     const opts = S.routines.map((r) => `<button class="block pick" style="margin-bottom:8px;text-align:left" data-act="startRoutine" data-id="${r.id}"><b>${esc(r.name)}</b><br><span class="muted small">${r.exercises.length} ejercicios</span></button>`).join('');
     return `
       <h2>¿Qué toca hoy?</h2>
-      ${opts || '<p class="muted">No tienes rutinas aún. Puedes crear una en "Rutinas" o hacer un entreno libre.</p>'}
+      ${opts || '<p class="muted">No tienes sesiones aún. Puedes crear una en "Sesiones" o hacer un entreno libre.</p>'}
       <button class="primary block" data-act="startFree">Entreno libre</button>
     `;
   }
@@ -481,7 +481,7 @@ function viewProgress() {
     <select data-prog="ex">${list.map((e) => `<option ${e.name.toLowerCase() === progEx.toLowerCase() ? 'selected' : ''}>${esc(e.name)}</option>`).join('')}</select>
     <div class="segs">${metricBtns}</div>
     <div class="card">
-      <div class="row between"><h3>${esc(M.label)}</h3><span class="muted small">${series.length} sesiones</span></div>
+      <div class="row between"><h3>${esc(M.label)}</h3><span class="muted small">${series.length} entrenos</span></div>
       ${lineChart(pts, M.unit)}
       <div class="stats mini">
         <div class="stat"><b>${fmtN(last.y)}</b><span>último (${M.unit})</span></div>
@@ -568,14 +568,14 @@ function buildReport(ws) {
   L.push(`- Días por semana (últimas 8 semanas, la última es esta): ${hist.join(' · ')}`);
   L.push('');
   L.push('## Resumen de carga');
-  L.push(`- Sesiones: ${list.length} · Tiempo total: ${fmtDur(mins)}`);
+  L.push(`- Entrenos: ${list.length} · Tiempo total: ${fmtDur(mins)}`);
   L.push(`- Series totales: ${sets}${diff(sets, prev.reduce((a, s) => a + sessSets(s), 0))}`);
   L.push(`- Volumen total (kg × reps): ${fmtN(vol)} kg${diff(vol, pvol)}`);
   if (energies.length) L.push(`- Energía media: ${fmtN(energies.reduce((a, b) => a + b, 0) / energies.length)}/5`);
   L.push('');
 
-  L.push('## Sesiones');
-  if (!list.length) L.push('_No hubo sesiones esta semana._');
+  L.push('## Entrenos de la semana');
+  if (!list.length) L.push('_No hubo entrenos esta semana._');
   for (const s of list) {
     const d = new Date(s.date);
     L.push(`### ${DAYS[(d.getDay() + 6) % 7]} ${d.getDate()} — ${s.routineName || 'Entreno libre'}`);
@@ -642,9 +642,9 @@ function buildReport(ws) {
     L.push('');
   }
 
-  // Rutinas planificadas
+  // Sesiones planificadas
   if (S.routines.length) {
-    L.push('## Mis rutinas actuales (plan)');
+    L.push('## Mis sesiones planificadas');
     for (const r of S.routines) {
       L.push(`**${r.name}**${r.notes ? ` — ${r.notes}` : ''}`);
       for (const e of r.exercises) {
@@ -714,14 +714,14 @@ const actions = {
   },
   routineSave: () => {
     const r = routineDraft;
-    r.name = r.name.trim() || 'Rutina sin nombre';
+    r.name = r.name.trim() || 'Sesión sin nombre';
     r.exercises = r.exercises.filter((e) => e.name.trim());
     const i = S.routines.findIndex((x) => x.id === r.id);
     if (i >= 0) S.routines[i] = r; else S.routines.push(r);
-    save(); toast('Rutina guardada'); go('routines');
+    save(); toast('Sesión guardada'); go('routines');
   },
   routineDelete: () => {
-    if (!confirm('¿Eliminar esta rutina? Los entrenos ya guardados no se borran.')) return;
+    if (!confirm('¿Eliminar esta sesión? Los entrenos ya guardados no se borran.')) return;
     S.routines = S.routines.filter((x) => x.id !== routineDraft.id); save(); go('routines');
   },
   startRoutine: (el) => {
@@ -861,7 +861,7 @@ document.addEventListener('change', (e) => {
   f.text().then((txt) => {
     const d = JSON.parse(txt);
     if (!d || !Array.isArray(d.sessions) || !Array.isArray(d.routines)) throw new Error('formato no válido');
-    if (!confirm(`Importar ${d.sessions.length} entrenos y ${d.routines.length} rutinas? Sustituirá los datos actuales.`)) return;
+    if (!confirm(`Importar ${d.sessions.length} entrenos y ${d.routines.length} sesiones? Sustituirá los datos actuales.`)) return;
     S = Object.assign(blankState(), d); save(); toast('Copia importada'); go('home');
   }).catch((err) => toast('No se pudo importar: ' + err.message));
 });
