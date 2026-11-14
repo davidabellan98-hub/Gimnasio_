@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = 36; // igual que VERSION en sw.js
+const APP_VERSION = 37; // igual que VERSION en sw.js
 
 /* ============ Estado y almacenamiento ============ */
 const KEY = 'gymlog.v1';
@@ -291,8 +291,15 @@ function go(t) {
 
 const TITLES = { home: 'Actividad', routines: 'Sesiones', routineEdit: 'Editar sesión', routineImport: 'Importar sesiones', train: 'Entrenar', history: 'Historial', progress: 'Progreso', report: 'Informe semanal', settings: 'Ajustes' };
 
+// Los títulos largos se encogen (hasta 20 px) para caber en una línea junto al botón de ajustes
+function fitTitle() {
+  const h = $('#title'); h.style.fontSize = '';
+  let size = parseFloat(getComputedStyle(h).fontSize);
+  while (h.scrollWidth > h.clientWidth + 1 && size > 20) { size -= 1; h.style.fontSize = size + 'px'; }
+}
 function render() {
-  $('#title').textContent = tab === 'train' && S.active && S.active.past ? (S.active.editingId ? 'Editar entreno' : 'Registrar entrenamiento') : (TITLES[tab] || 'GymLog');
+  $('#title').textContent = tab === 'train' && S.active && S.active.past ? (S.active.editingId ? 'Editar entreno' : 'Registro entrenamiento') : (TITLES[tab] || 'GymLog');
+  fitTitle();
   document.querySelectorAll('.tabbar button').forEach((b) => {
     b.classList.toggle('active', b.dataset.tab === tab || ((tab === 'routineEdit' || tab === 'routineImport') && b.dataset.tab === 'routines'));
   });
