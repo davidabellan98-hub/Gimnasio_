@@ -26,7 +26,7 @@ Todo funciona sin conexión y los datos se quedan **solo en tu iPhone**: no hay 
 
 1. El domingo, abre **Informe**, escribe tus comentarios (molestias, sueño, objetivos) y pulsa **Compartir / Guardar → Guardar en Archivos**.
 2. Sube ese `.md` a tu proyecto «Entrenador personal» en Claude.
-3. Aplica los cambios que te proponga en **Sesiones**.
+3. Copia el bloque de sesiones que pone al final de su respuesta y pégalo en **Sesiones → Importar del entrenador**. Las sesiones con el mismo nombre se actualizan (conservan su historial) y las nuevas se añaden.
 
 ## Probar en el ordenador
 

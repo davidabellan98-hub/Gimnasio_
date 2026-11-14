@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = 24; // igual que VERSION en sw.js
+const APP_VERSION = 25; // igual que VERSION en sw.js
 
 /* ============ Estado y almacenamiento ============ */
 const KEY = 'gymlog.v1';
@@ -207,6 +207,62 @@ function barChart(bars, unit) {
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Gráfico de barras">${grid}${rects}</svg>`;
 }
 
+
+/* ============ Importar sesiones del entrenador ============ */
+// Ejemplo del formato que se pide al entrenador (también va al final del informe semanal).
+const PLAN_EXAMPLE = {
+  gymlog: 'sesiones',
+  sesiones: [
+    { nombre: 'Torso A', notas: 'Semana 3', ejercicios: [
+      { nombre: 'Press banca', series: 4, reps: '6-8', kg: 72.5, descanso: 150, notas: 'pausa en el pecho' },
+      { nombre: 'Remo con barra', series: 4, reps: '8-10', kg: 62.5, descanso: 120 }
+    ] }
+  ]
+};
+// Saca el JSON del texto pegado: acepta el JSON solo, dentro de un bloque ```json``` o rodeado de texto.
+function extractPlanJSON(text) {
+  const tries = [text];
+  const fences = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)].map((m) => m[1]);
+  tries.push(...fences.reverse());
+  const a = text.indexOf('{'), b = text.lastIndexOf('}');
+  if (a >= 0 && b > a) tries.push(text.slice(a, b + 1));
+  for (const t of tries) {
+    try { return JSON.parse(t.trim().replace(/[“”]/g, '"')); } catch (e) { /* siguiente intento */ }
+  }
+  throw new Error('no encuentro el bloque de sesiones. Copia el bloque de código que empieza por {');
+}
+function parsePlan(text) {
+  const d = extractPlanJSON(text);
+  let list = Array.isArray(d) ? d : (d.sesiones || d.sessions || d.rutinas || d.routines);
+  if (!list && (d.nombre || d.name)) list = [d];
+  if (!Array.isArray(list) || !list.length) throw new Error('el bloque no tiene ninguna sesión');
+  const str = (v) => (v === undefined || v === null ? '' : String(v).trim());
+  const out = list.map((s) => ({
+    name: str(s.nombre ?? s.name),
+    notes: str(s.notas ?? s.notes ?? s.objetivo),
+    exercises: (s.ejercicios || s.exercises || []).map((e) => ({
+      name: str(e.nombre ?? e.name ?? e.ejercicio),
+      sets: str(e.series ?? e.sets) || '3',
+      reps: str(e.reps ?? e.repeticiones),
+      weight: num(str(e.kg ?? e.peso ?? e.weight)) ? str(e.kg ?? e.peso ?? e.weight).replace(',', '.') : '',
+      rest: str(e.descanso ?? e.rest) || '90',
+      notes: str(e.notas ?? e.notes)
+    })).filter((e) => e.name)
+  })).filter((s) => s.name && s.exercises.length);
+  if (!out.length) throw new Error('las sesiones no tienen nombre o ejercicios');
+  return out;
+}
+// Las sesiones con el mismo nombre se actualizan (conservan su historial); las nuevas se añaden.
+function applyPlan(plan) {
+  const key = (n) => n.trim().toLowerCase();
+  for (const s of plan) {
+    const i = S.routines.findIndex((r) => key(r.name) === key(s.name));
+    if (i >= 0) S.routines[i] = { ...S.routines[i], name: s.name, notes: s.notes || S.routines[i].notes || '', exercises: s.exercises };
+    else S.routines.push({ id: uid(), ...s });
+  }
+  save();
+}
+
 /* ============ Navegación ============ */
 let tab = S.active ? 'train' : 'home';
 let routineDraft = null;
@@ -224,18 +280,18 @@ function go(t) {
   tab = t; render(); window.scrollTo(0, 0);
 }
 
-const TITLES = { home: 'Actividad', routines: 'Sesiones', routineEdit: 'Editar sesión', train: 'Entrenar', history: 'Historial', progress: 'Progreso', report: 'Informe semanal', settings: 'Ajustes' };
+const TITLES = { home: 'Actividad', routines: 'Sesiones', routineEdit: 'Editar sesión', routineImport: 'Importar sesiones', train: 'Entrenar', history: 'Historial', progress: 'Progreso', report: 'Informe semanal', settings: 'Ajustes' };
 
 function render() {
   $('#title').textContent = TITLES[tab] || 'GymLog';
   document.querySelectorAll('.tabbar button').forEach((b) => {
-    b.classList.toggle('active', b.dataset.tab === tab || (tab === 'routineEdit' && b.dataset.tab === 'routines'));
+    b.classList.toggle('active', b.dataset.tab === tab || ((tab === 'routineEdit' || tab === 'routineImport') && b.dataset.tab === 'routines'));
   });
   $('.primary-tab').classList.toggle('live', !!S.active);
   $('.topbar .icon-btn').classList.toggle('on', tab === 'settings');
   $('.topbar .icon-btn').setAttribute('aria-label', tab === 'settings' ? 'Cerrar ajustes' : 'Ajustes');
   $('#exnames').innerHTML = allExerciseNames().map((n) => `<option value="${esc(n)}">`).join('');
-  const v = { home: viewHome, routines: viewRoutines, routineEdit: viewRoutineEdit, train: viewTrain, history: viewHistory, progress: viewProgress, report: viewReport, settings: viewSettings }[tab];
+  const v = { home: viewHome, routines: viewRoutines, routineEdit: viewRoutineEdit, routineImport: viewRoutineImport, train: viewTrain, history: viewHistory, progress: viewProgress, report: viewReport, settings: viewSettings }[tab];
   $('#view').innerHTML = v();
   if (tab === 'report') $('#reportText').textContent = buildReport(reportWeek);
 }
@@ -328,6 +384,26 @@ function viewRoutines() {
   return `
     ${list || '<div class="empty">Aún no tienes sesiones.<br>Crea una (p. ej. "Torso", "Pierna", "Full body").</div>'}
     <button class="primary block" data-act="newRoutine">+ Nueva sesión</button>
+    <button class="block" style="margin-top:10px" data-act="go" data-tab="routineImport">Importar del entrenador</button>
+  `;
+}
+
+let planText = '';
+function viewRoutineImport() {
+  return `
+    <div class="card">
+      <p class="small">Pide a tu entrenador el plan de la semana y que lo termine con el <b>bloque de sesiones para GymLog</b>. Copia ese bloque (botón de copiar del bloque de código) y pégalo aquí.</p>
+      <p class="muted small">Las sesiones con el mismo nombre que una tuya se actualizan y conservan su historial; las nuevas se añaden; el resto no se toca.</p>
+    </div>
+    <label>Bloque de sesiones</label>
+    <textarea id="planText" data-plan="1" style="min-height:180px;font-family:ui-monospace,Menlo,monospace;font-size:13px" placeholder='{ "gymlog": "sesiones", "sesiones": [ … ] }'>${esc(planText)}</textarea>
+    <div class="row wrap" style="margin:10px 0">
+      <button class="grow" data-act="planPaste">Pegar</button>
+      <label class="btn grow" style="text-align:center;margin:0;color:var(--text);font-size:16px">Elegir archivo<input type="file" accept=".json,.txt,.md,application/json,text/plain,text/markdown" id="planFile" hidden></label>
+    </div>
+    <button class="primary block" data-act="planImport">Importar sesiones</button>
+    <details class="card" style="margin-top:16px"><summary><b>Ver formato</b> <span class="muted small">(ya va incluido en el informe semanal)</span></summary>
+      <pre class="report" style="margin-top:10px">${esc(JSON.stringify(PLAN_EXAMPLE, null, 2))}</pre></details>
   `;
 }
 
@@ -671,6 +747,12 @@ function buildReport(ws) {
   L.push('');
   L.push('## Qué necesito del entrenador');
   L.push('Analiza mi constancia, la progresión de cargas y el volumen por grupo muscular. Dime qué puedo mejorar, si algún ejercicio está estancado y debería cambiarlo o ajustarlo, y propón cambios concretos para la próxima semana.');
+  L.push('');
+  L.push('## Plan para importar en GymLog');
+  L.push('Termina tu respuesta con las sesiones de la próxima semana en un único bloque de código JSON con este formato, para que pueda copiarlo e importarlo en la app. Usa los mismos nombres de sesión que ya tengo si solo cambian ejercicios o cargas (así se actualizan y conservan su historial). "reps" admite rangos ("8-10"), "kg" es el peso orientativo (vacío o 0 si es con peso corporal) y "descanso" va en segundos.');
+  L.push('```json');
+  L.push(JSON.stringify(PLAN_EXAMPLE, null, 2));
+  L.push('```');
   return L.join('\n');
 }
 
@@ -684,7 +766,7 @@ function newActive(routine) {
       const last = lastPerformance(e.name);
       a.exercises.push({
         name: e.name, rest: parseInt(e.rest, 10) || 90, notes: e.notes || '',
-        target: `${e.sets || '?'}×${e.reps || '?'}${e.weight ? ' @ ' + e.weight + ' kg' : ''}`,
+        target: `${e.sets || '?'}×${e.reps || '?'}${num(e.weight) ? ' @ ' + fmtN(num(e.weight)) + ' kg' : ''}`,
         sets: Array.from({ length: n }, (_, j) => {
           const ls = last && (last.ex.sets[j] || last.ex.sets[last.ex.sets.length - 1]);
           return { w: '', r: '', pw: e.weight || (ls ? ls.w : ''), pr: reps || (ls ? ls.r : ''), done: false };
@@ -722,6 +804,22 @@ const actions = {
     const i = +el.dataset.i, j = i + +el.dataset.d, a = routineDraft.exercises;
     if (j < 0 || j >= a.length) return;
     [a[i], a[j]] = [a[j], a[i]]; render();
+  },
+  planPaste: async () => {
+    try { planText = await navigator.clipboard.readText(); render(); }
+    catch (e) { toast('Mantén pulsado el cuadro y elige «Pegar»'); }
+  },
+  planImport: () => {
+    let plan;
+    try { plan = parsePlan(planText); } catch (err) { toast('No se pudo leer: ' + err.message); return; }
+    const key = (n) => n.trim().toLowerCase();
+    const upd = plan.filter((s) => S.routines.some((r) => key(r.name) === key(s.name))).map((s) => s.name);
+    const add = plan.filter((s) => !upd.includes(s.name)).map((s) => s.name);
+    const msg = [`Se van a importar ${plan.length} ${plan.length === 1 ? 'sesión' : 'sesiones'}:`,
+      upd.length ? `• Se actualizan: ${upd.join(', ')}` : '', add.length ? `• Se añaden: ${add.join(', ')}` : '', '', '¿Continuar?'].filter((x) => x !== '').join('\n');
+    if (!confirm(msg)) return;
+    applyPlan(plan); planText = '';
+    toast(`${plan.length} ${plan.length === 1 ? 'sesión importada' : 'sesiones importadas'}`); go('routines');
   },
   routineSave: () => {
     const r = routineDraft;
@@ -859,6 +957,8 @@ document.addEventListener('input', (e) => {
   } else if (t.dataset.repnotes !== undefined) {
     S.reportNotes[t.dataset.repnotes] = t.value; save();
     $('#reportText').textContent = buildReport(reportWeek);
+  } else if (t.dataset.plan) {
+    planText = t.value;
   } else if (t.dataset.prog === 'ex') {
     progEx = t.value; progMetric = null; render();
   } else if (t.dataset.setting) {
@@ -867,6 +967,11 @@ document.addEventListener('input', (e) => {
 });
 
 document.addEventListener('change', (e) => {
+  if (e.target.id === 'planFile') {
+    const f = e.target.files[0]; if (!f) return;
+    f.text().then((txt) => { planText = txt; render(); toast('Archivo cargado: pulsa «Importar sesiones»'); }).catch((err) => toast('No se pudo leer el archivo: ' + err.message));
+    return;
+  }
   if (e.target.id !== 'importFile') return;
   const f = e.target.files[0]; if (!f) return;
   f.text().then((txt) => {
