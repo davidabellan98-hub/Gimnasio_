@@ -231,18 +231,36 @@ function viewHome() {
   const monthKey = ymd(new Date()).slice(0, 7);
   const monthDays = new Set(S.sessions.filter((s) => ymd(s.date).startsWith(monthKey)).map((s) => ymd(s.date))).size;
 
-  // Heatmap 16 semanas
+  // Heatmap 16 semanas: fila de meses arriba, días de la semana a la izquierda.
+  // Es una ventana móvil: siempre muestra las 16 últimas semanas hasta la actual.
   const trainedDays = {};
   S.sessions.forEach((s) => { const k = ymd(s.date); trainedDays[k] = (trainedDays[k] || 0) + 1; });
   const start = addDays(ws, -7 * 15);
   const today = ymd(new Date());
-  let cells = '';
-  for (let i = 0; i < 16 * 7; i++) {
-    const d = addDays(start, i); const k = ymd(d);
-    const lvl = trainedDays[k] ? 'l2' : '';
-    const cls = [lvl, k === today ? 'today' : '', d > new Date() ? 'future' : ''].join(' ');
-    cells += `<i class="${cls}" title="${k}"></i>`;
+  const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  // Columna en la que empieza cada mes (la del día 1, o la primera columna para el mes inicial)
+  const monthAt = [];
+  for (let c = 0; c < 16; c++) {
+    const days = Array.from({ length: 7 }, (_, r) => addDays(start, c * 7 + r));
+    const first = days.find((d) => d.getDate() === 1);
+    if (first) monthAt[c] = first;
   }
+  // Etiqueta del mes inicial solo si hay sitio antes del siguiente cambio de mes
+  if (!monthAt[0] && !monthAt[1] && !monthAt[2]) monthAt[0] = start;
+  let grid = '<span></span>';
+  for (let c = 0; c < 16; c++) {
+    const d = monthAt[c];
+    grid += `<span class="hm ${d ? 'on' : ''}">${d ? MES[d.getMonth()] + (d.getMonth() === 0 || c === 0 ? ' ' + String(d.getFullYear()).slice(2) : '') : ''}</span>`;
+  }
+  ['L', '', 'X', '', 'V', '', 'D'].forEach((lab, r) => {
+    grid += `<span class="hd">${lab}</span>`;
+    for (let c = 0; c < 16; c++) {
+      const d = addDays(start, c * 7 + r); const k = ymd(d);
+      const cls = [trainedDays[k] ? 'l2' : '', k === today ? 'today' : '', d > new Date() ? 'future' : ''].join(' ');
+      grid += `<i class="${cls}" data-act="heatDay" data-d="${k}"></i>`;
+    }
+  });
+  const rangeTxt = `${fmtDate(start, { day: 'numeric', month: 'short' })} – ${fmtDate(addDays(ws, 6), { day: 'numeric', month: 'short', year: 'numeric' })}`;
 
   // Barras 8 semanas
   const weeks = [];
@@ -265,8 +283,8 @@ function viewHome() {
     ${S.active ? `<button class="primary block" style="margin-top:12px" data-act="go" data-tab="train">Continuar entreno en curso</button>`
       : `<button class="primary block" style="margin-top:12px" data-act="go" data-tab="train">Empezar entrenamiento</button>`}
     <h2>Constancia (16 semanas)</h2>
-    <div class="card"><div class="heat">${cells}</div>
-      <p class="muted small">Cada columna es una semana (lunes arriba). Rojo = día entrenado.</p></div>
+    <div class="card"><div class="heat">${grid}</div>
+      <p class="muted small">${rangeTxt}. Cada columna es una semana (de lunes a domingo) y el mes aparece encima de la semana en la que empieza. Rojo = día entrenado · recuadro blanco = hoy. Toca un cuadrado para ver su fecha.</p></div>
     <h2>Días por semana</h2>
     <div class="card"><div class="weeks">${bars}</div>
       <p class="muted small">Línea discontinua = objetivo (${goal} días). Barra roja = semana cumplida.</p></div>
@@ -722,6 +740,11 @@ const actions = {
     const s = S.sessions.find((x) => x.id === el.dataset.id);
     S.active = { id: uid(), editingId: s.id, date: s.date, startedAt: null, durationManual: s.duration, routineId: s.routineId, routineName: s.routineName, notes: s.notes, energy: s.energy, exercises: s.exercises.map((e) => ({ name: e.name, rest: 90, sets: e.sets.map((st) => ({ w: st.w, r: st.r, done: true })) })) };
     save(); go('train');
+  },
+  heatDay: (el) => {
+    const d = el.dataset.d; const n = S.sessions.filter((s) => ymd(s.date) === d);
+    const f = fmtDate(d + 'T12:00', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    toast(n.length ? `${f}: ${n.map((s) => s.routineName || 'Entreno libre').join(', ')}` : `${f}: sin entreno`);
   },
   progMetric: (el) => { progMetric = el.dataset.m; render(); },
   progPick: (el) => { progEx = el.dataset.name; progMetric = null; go('progress'); },
