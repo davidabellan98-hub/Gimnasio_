@@ -213,7 +213,15 @@ let reportWeek = weekStart(new Date());
 let progEx = null;
 let progMetric = null;
 
-function go(t) { tab = t; render(); window.scrollTo(0, 0); }
+let prevTab = 'home';
+function go(t) {
+  // El botón de ajustes funciona como interruptor: si ya estás en Ajustes, vuelve a donde estabas.
+  if (t === 'settings') {
+    if (tab === 'settings') t = prevTab;
+    else prevTab = tab;
+  }
+  tab = t; render(); window.scrollTo(0, 0);
+}
 
 const TITLES = { home: 'Actividad', routines: 'Sesiones', routineEdit: 'Editar sesión', train: 'Entrenar', history: 'Historial', progress: 'Progreso', report: 'Informe semanal', settings: 'Ajustes' };
 
@@ -223,6 +231,8 @@ function render() {
     b.classList.toggle('active', b.dataset.tab === tab || (tab === 'routineEdit' && b.dataset.tab === 'routines'));
   });
   $('.primary-tab').classList.toggle('live', !!S.active);
+  $('.topbar .icon-btn').classList.toggle('on', tab === 'settings');
+  $('.topbar .icon-btn').setAttribute('aria-label', tab === 'settings' ? 'Cerrar ajustes' : 'Ajustes');
   $('#exnames').innerHTML = allExerciseNames().map((n) => `<option value="${esc(n)}">`).join('');
   const v = { home: viewHome, routines: viewRoutines, routineEdit: viewRoutineEdit, train: viewTrain, history: viewHistory, progress: viewProgress, report: viewReport, settings: viewSettings }[tab];
   $('#view').innerHTML = v();
