@@ -27,10 +27,10 @@ body {
 .topbar {
   position: sticky; top: 0; z-index: 5;
   display: flex; align-items: center; justify-content: space-between;
-  padding: 26px 14px 12px 20px; min-height: 84px; background: var(--bg);
+  padding: 21px 14px 7px 20px; min-height: 84px; background: var(--bg);
   border-bottom: 1px solid var(--line);
 }
-.topbar h1 { font-size: 28px; line-height: 40px; font-weight: 800; letter-spacing: -0.3px; margin: 0; }
+.topbar h1 { font-size: 28px; line-height: 56px; font-weight: 800; letter-spacing: -0.3px; margin: 0; }
 main { padding: 16px; max-width: 640px; margin: 0 auto; }
 h2 { font-size: 18px; margin: 20px 0 10px; padding-left: 10px; border-left: 4px solid var(--accent); line-height: 1.2; }
 h3 { font-size: 16px; margin: 0 0 6px; }
