@@ -266,10 +266,10 @@ function viewHome() {
       : `<button class="primary block" style="margin-top:12px" data-act="go" data-tab="train">Empezar entrenamiento</button>`}
     <h2>Constancia (16 semanas)</h2>
     <div class="card"><div class="heat">${cells}</div>
-      <p class="muted small">Cada columna es una semana (lunes arriba). Azul = día entrenado.</p></div>
+      <p class="muted small">Cada columna es una semana (lunes arriba). Rojo = día entrenado.</p></div>
     <h2>Días por semana</h2>
     <div class="card"><div class="weeks">${bars}</div>
-      <p class="muted small">Línea discontinua = objetivo (${goal} días). Verde = semana cumplida.</p></div>
+      <p class="muted small">Línea discontinua = objetivo (${goal} días). Barra roja = semana cumplida.</p></div>
     ${last ? `<h2>Último entreno</h2><div class="card"><b>${esc(last.routineName || 'Entreno libre')}</b>
       <p class="muted">${fmtDate(last.date, { weekday: 'long', day: 'numeric', month: 'long' })} · ${fmtDur(last.duration)} · ${sessSets(last)} series</p></div>` : ''}
   `;
