@@ -29,7 +29,7 @@ body {
 }
 .topbar h1 { font-size: 20px; margin: 0; }
 main { padding: 16px; max-width: 640px; margin: 0 auto; }
-h2 { font-size: 18px; margin: 20px 0 10px; }
+h2 { font-size: 18px; margin: 20px 0 10px; padding-left: 10px; border-left: 4px solid var(--accent); line-height: 1.2; }
 h3 { font-size: 16px; margin: 0 0 6px; }
 p { margin: 6px 0; }
 .muted { color: var(--muted); font-size: 14px; }
@@ -166,3 +166,9 @@ pre.report {
 .tbl th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 500; padding: 4px 4px 6px; }
 .tbl td { border-top: 1px solid var(--line); padding: 8px 4px; vertical-align: top; }
 .tbl tr[data-act] { cursor: pointer; }
+
+/* acentos rojos */
+.rex { border-left: 3px solid var(--accent); }
+.num-red { color: var(--accent); }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+.seg:not(.on) { border-color: #3a1210; }

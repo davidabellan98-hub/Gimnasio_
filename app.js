@@ -317,8 +317,8 @@ function viewRoutines() {
 function viewRoutineEdit() {
   const r = routineDraft;
   const exs = r.exercises.map((e, i) => `
-    <div class="card">
-      <div class="row between"><b>${i + 1}.</b>
+    <div class="card rex">
+      <div class="row between"><b class="num-red">${i + 1}.</b>
         <div class="row">
           <button class="sm" data-act="rexMove" data-i="${i}" data-d="-1" aria-label="Subir">↑</button>
           <button class="sm" data-act="rexMove" data-i="${i}" data-d="1" aria-label="Bajar">↓</button>
