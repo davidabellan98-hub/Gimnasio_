@@ -208,7 +208,7 @@ let progMetric = null;
 
 function go(t) { tab = t; render(); window.scrollTo(0, 0); }
 
-const TITLES = { home: 'Resumen', routines: 'Rutinas', routineEdit: 'Editar rutina', train: 'Entrenar', history: 'Historial', progress: 'Progreso', report: 'Informe semanal', settings: 'Ajustes' };
+const TITLES = { home: 'Actividad', routines: 'Rutinas', routineEdit: 'Editar rutina', train: 'Entrenar', history: 'Historial', progress: 'Progreso', report: 'Informe semanal', settings: 'Ajustes' };
 
 function render() {
   $('#title').textContent = TITLES[tab] || 'GymLog';
