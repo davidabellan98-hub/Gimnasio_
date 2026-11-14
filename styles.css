@@ -21,6 +21,8 @@
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; background: var(--bg); color: var(--text); }
+/* Que Safari del iPhone no agrande textos por su cuenta (lo hacía en algunos botones y no en otros) */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
   font: 16px/1.4 "Archivo", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
   padding-top: env(safe-area-inset-top);
