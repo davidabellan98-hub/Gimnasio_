@@ -252,6 +252,13 @@ function viewHome() {
     const d = monthAt[c];
     grid += `<span class="hm ${d ? 'on' : ''}">${d ? MES[d.getMonth()] + (d.getMonth() === 0 || c === 0 ? ' ' + String(d.getFullYear()).slice(2) : '') : ''}</span>`;
   }
+  // Número de semana del año (ISO 8601: la semana 1 es la que contiene el primer jueves)
+  grid += '<span></span>';
+  for (let c = 0; c < 16; c++) {
+    const th = addDays(start, c * 7 + 3);
+    const wn = 1 + Math.floor((th - new Date(th.getFullYear(), 0, 1)) / 864e5 / 7);
+    grid += `<span class="hw ${c === 15 ? 'now' : ''}">${wn}</span>`;
+  }
   ['L', '', 'X', '', 'V', '', 'D'].forEach((lab, r) => {
     grid += `<span class="hd">${lab}</span>`;
     for (let c = 0; c < 16; c++) {
@@ -260,7 +267,6 @@ function viewHome() {
       grid += `<i class="${cls}" data-act="heatDay" data-d="${k}"></i>`;
     }
   });
-  const rangeTxt = `${fmtDate(start, { day: 'numeric', month: 'short' })} – ${fmtDate(addDays(ws, 6), { day: 'numeric', month: 'short', year: 'numeric' })}`;
 
   // Barras 8 semanas
   const weeks = [];
@@ -282,9 +288,8 @@ function viewHome() {
     </div>
     ${S.active ? `<button class="primary block" style="margin-top:12px" data-act="go" data-tab="train">Continuar entreno en curso</button>`
       : `<button class="primary block" style="margin-top:12px" data-act="go" data-tab="train">Empezar entrenamiento</button>`}
-    <h2>Constancia (16 semanas)</h2>
-    <div class="card"><div class="heat">${grid}</div>
-      <p class="muted small">${rangeTxt}. Cada columna es una semana (de lunes a domingo) y el mes aparece encima de la semana en la que empieza. Rojo = día entrenado · recuadro blanco = hoy. Toca un cuadrado para ver su fecha.</p></div>
+    <h2>Constancia</h2>
+    <div class="card"><div class="heat">${grid}</div></div>
     <h2>Días por semana</h2>
     <div class="card"><div class="weeks">${bars}</div>
       <p class="muted small">Línea discontinua = objetivo (${goal} días). Barra roja = semana cumplida.</p></div>
@@ -744,7 +749,8 @@ const actions = {
   heatDay: (el) => {
     const d = el.dataset.d; const n = S.sessions.filter((s) => ymd(s.date) === d);
     const f = fmtDate(d + 'T12:00', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-    toast(n.length ? `${f}: ${n.map((s) => s.routineName || 'Entreno libre').join(', ')}` : `${f}: sin entreno`);
+    const th = addDays(weekStart(d + 'T12:00'), 3); const wn = 1 + Math.floor((th - new Date(th.getFullYear(), 0, 1)) / 864e5 / 7);
+    toast(`${f} (semana ${wn}): ` + (n.length ? n.map((s) => s.routineName || 'Entreno libre').join(', ') : 'sin entreno'));
   },
   progMetric: (el) => { progMetric = el.dataset.m; render(); },
   progPick: (el) => { progEx = el.dataset.name; progMetric = null; go('progress'); },

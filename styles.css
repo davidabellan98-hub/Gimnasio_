@@ -90,6 +90,8 @@ label { display: block; font-size: 13px; color: var(--muted); margin: 8px 0 4px;
 .heat { display: grid; grid-template-columns: 14px repeat(16, 1fr); gap: 3px; align-items: center; }
 .heat .hm { font-size: 10px; color: var(--muted); white-space: nowrap; overflow: visible; width: 0; height: 14px; line-height: 14px; }
 .heat .hm.on { color: var(--text); font-weight: 600; }
+.heat .hw { font-size: 9px; color: var(--muted); text-align: center; font-variant-numeric: tabular-nums; }
+.heat .hw.now { color: var(--accent); font-weight: 700; }
 .heat .hd { font-size: 10px; color: var(--muted); text-align: left; }
 .heat i { cursor: pointer; }
 .heat i { aspect-ratio: 1; border-radius: 3px; background: var(--heat0); }
