@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = 35; // igual que VERSION en sw.js
+const APP_VERSION = 36; // igual que VERSION en sw.js
 
 /* ============ Estado y almacenamiento ============ */
 const KEY = 'gymlog.v1';
