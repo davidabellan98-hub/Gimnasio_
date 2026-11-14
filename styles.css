@@ -172,3 +172,8 @@ pre.report {
 .num-red { color: var(--accent); }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
 .seg:not(.on) { border-color: #3a1210; }
+.ex-card { border-left: 3px solid var(--accent); }
+.set .idx { color: var(--accent); font-weight: 700; }
+.set-head span { color: var(--accent); font-weight: 600; }
+.elapsed { color: var(--accent); }
+.set .chk { color: var(--accent); border-color: var(--accent); }

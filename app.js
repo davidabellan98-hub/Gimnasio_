@@ -364,7 +364,7 @@ function viewTrain() {
   const a = S.active;
   const exs = a.exercises.map((ex, i) => {
     const last = lastPerformance(ex.name, null, a.id);
-    const target = ex.target ? `Objetivo: ${esc(ex.target)}` : '';
+    const target = ex.target ? `<b class="num-red">Objetivo:</b> ${esc(ex.target)}` : '';
     const sets = ex.sets.map((st, j) => `
       <div class="set ${st.done ? 'done' : ''}">
         <span class="idx">${j + 1}</span>
