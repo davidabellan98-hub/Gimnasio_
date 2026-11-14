@@ -1,18 +1,21 @@
-// Cache de la app para que funcione sin conexión. Sube VERSION al cambiar archivos.
-const VERSION = 'gymlog-v15';
+// Cache de la app para que funcione sin conexión. Sube VERSION (y APP_VERSION en app.js) al cambiar archivos.
+const VERSION = 'gymlog-v16';
 const FILES = ['./', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest', 'icons/apple-touch-icon.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
+  // cache: 'reload' para no guardar copias viejas de la caché HTTP del navegador
+  e.waitUntil(caches.open(VERSION)
+    .then((c) => c.addAll(FILES.map((f) => new Request(f, { cache: 'reload' }))))
+    .then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
 });
-// Red primero (para recibir actualizaciones) y caché si no hay conexión.
+// Red primero, preguntando siempre al servidor si hay versión nueva (no-cache); caché solo sin conexión.
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
   e.respondWith(
-    fetch(e.request).then((res) => {
+    fetch(e.request, { cache: 'no-cache' }).then((res) => {
       const copy = res.clone();
       caches.open(VERSION).then((c) => c.put(e.request, copy));
       return res;

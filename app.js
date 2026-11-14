@@ -1,4 +1,5 @@
 'use strict';
+const APP_VERSION = 16; // igual que VERSION en sw.js
 
 /* ============ Estado y almacenamiento ============ */
 const KEY = 'gymlog.v1';
@@ -545,7 +546,7 @@ function viewSettings() {
     <h2>Instalar en el iPhone</h2>
     <div class="card"><p class="small">Abre esta página en <b>Safari</b> → botón <b>Compartir</b> → <b>Añadir a pantalla de inicio</b>. Se abrirá como una app y funciona sin conexión.</p></div>
     <button class="danger block" style="margin-top:20px" data-act="wipe">Borrar todos los datos</button>
-    <p class="muted small" style="text-align:center;margin-top:16px">GymLog v2</p>
+    <p class="muted small" style="text-align:center;margin-top:16px">GymLog · versión ${APP_VERSION}</p>
   `;
 }
 
@@ -877,7 +878,17 @@ document.addEventListener('change', (e) => {
 });
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
+    // Busca versión nueva cada vez que se vuelve a la app
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+  }).catch(() => {});
+  // Cuando se instala una versión nueva, recarga una vez para mostrarla. Los datos se guardan al escribir,
+  // así que no se pierde nada; solo se evita recargar mientras se edita una sesión sin guardar.
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController && !reloaded && tab !== 'routineEdit') { reloaded = true; location.reload(); }
+  });
 }
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 
