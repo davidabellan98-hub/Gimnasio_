@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = 32; // igual que VERSION en sw.js
+const APP_VERSION = 33; // igual que VERSION en sw.js
 
 /* ============ Estado y almacenamiento ============ */
 const KEY = 'gymlog.v1';
@@ -409,7 +409,7 @@ function viewRoutineImport() {
     <textarea id="planText" data-plan="1" style="min-height:180px;font-family:ui-monospace,Menlo,monospace;font-size:13px" placeholder='{ "gymlog": "sesiones", "sesiones": [ … ] }'>${esc(planText)}</textarea>
     <div class="row wrap" style="margin:10px 0">
       <button class="grow" data-act="planPaste">Pegar</button>
-      <label class="btn grow" style="text-align:center;margin:0;color:var(--text);font-size:16px">Elegir archivo<input type="file" accept=".json,.txt,.md,application/json,text/plain,text/markdown" id="planFile" hidden></label>
+      <label class="btn grow" style="margin:0">Elegir archivo<input type="file" accept=".json,.txt,.md,application/json,text/plain,text/markdown" id="planFile" hidden></label>
     </div>
     <button class="primary block" data-act="planImport">Importar sesiones</button>
     <details class="card" style="margin-top:16px"><summary><b>Ver formato</b> <span class="muted small">(ya va incluido en el informe semanal)</span></summary>
@@ -652,7 +652,7 @@ function viewSettings() {
     <div class="card">
       <p class="muted small">Los datos se guardan solo en este iPhone. Haz una copia de vez en cuando (por ejemplo a iCloud Drive desde "Guardar en Archivos").</p>
       <button class="block" data-act="backup">Exportar copia (.json)</button>
-      <label class="btn block" style="text-align:center;margin-top:8px;color:var(--text);font-size:16px">Importar copia<input type="file" accept=".json,application/json" id="importFile" hidden></label>
+      <label class="btn block" style="margin-top:8px">Importar copia<input type="file" accept=".json,application/json" id="importFile" hidden></label>
     </div>
     <h2>Instalar en el iPhone</h2>
     <div class="card"><p class="small">Abre esta página en <b>Safari</b> → botón <b>Compartir</b> → <b>Añadir a pantalla de inicio</b>. Se abrirá como una app y funciona sin conexión.</p></div>
