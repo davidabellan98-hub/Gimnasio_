@@ -208,7 +208,7 @@ let progMetric = null;
 
 function go(t) { tab = t; render(); window.scrollTo(0, 0); }
 
-const TITLES = { home: 'GymLog', routines: 'Rutinas', routineEdit: 'Editar rutina', train: 'Entrenar', history: 'Historial', progress: 'Progreso', report: 'Informe semanal', settings: 'Ajustes' };
+const TITLES = { home: 'Resumen', routines: 'Rutinas', routineEdit: 'Editar rutina', train: 'Entrenar', history: 'Historial', progress: 'Progreso', report: 'Informe semanal', settings: 'Ajustes' };
 
 function render() {
   $('#title').textContent = TITLES[tab] || 'GymLog';
@@ -292,7 +292,7 @@ function viewHome() {
     <div class="card"><div class="heat">${grid}</div></div>
     <h2>Días por semana</h2>
     <div class="card"><div class="weeks">${bars}</div>
-      <p class="muted small">Línea discontinua = objetivo (${goal} días). Barra roja = semana cumplida.</p></div>
+      </div>
     ${last ? `<h2>Último entreno</h2><div class="card"><b>${esc(last.routineName || 'Entreno libre')}</b>
       <p class="muted">${fmtDate(last.date, { weekday: 'long', day: 'numeric', month: 'long' })} · ${fmtDur(last.duration)} · ${sessSets(last)} series</p></div>` : ''}
   `;
