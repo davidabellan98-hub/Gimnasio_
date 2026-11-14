@@ -43,6 +43,13 @@ function weekStart(d) {
   x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
   return x;
 }
+// Número de semana ISO 8601 (la semana 1 es la que contiene el primer jueves).
+// Se calcula en UTC para que el cambio de horario de verano no lo descuadre.
+function isoWeek(d) {
+  const x = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  x.setUTCDate(x.getUTCDate() + 3 - ((x.getUTCDay() + 6) % 7)); // jueves de esa semana
+  return 1 + Math.floor((x - Date.UTC(x.getUTCFullYear(), 0, 1)) / 864e5 / 7);
+}
 function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
 function fmtDate(d, opts = { weekday: 'short', day: 'numeric', month: 'short' }) {
   return new Date(d).toLocaleDateString('es-ES', opts);
@@ -255,8 +262,7 @@ function viewHome() {
   // Número de semana del año (ISO 8601: la semana 1 es la que contiene el primer jueves)
   grid += '<span></span>';
   for (let c = 0; c < 16; c++) {
-    const th = addDays(start, c * 7 + 3);
-    const wn = 1 + Math.floor((th - new Date(th.getFullYear(), 0, 1)) / 864e5 / 7);
+    const wn = isoWeek(addDays(start, c * 7));
     grid += `<span class="hw ${c === 15 ? 'now' : ''}">${wn}</span>`;
   }
   ['L', '', 'X', '', 'V', '', 'D'].forEach((lab, r) => {
@@ -749,7 +755,7 @@ const actions = {
   heatDay: (el) => {
     const d = el.dataset.d; const n = S.sessions.filter((s) => ymd(s.date) === d);
     const f = fmtDate(d + 'T12:00', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-    const th = addDays(weekStart(d + 'T12:00'), 3); const wn = 1 + Math.floor((th - new Date(th.getFullYear(), 0, 1)) / 864e5 / 7);
+    const wn = isoWeek(new Date(d + 'T12:00'));
     toast(`${f} (semana ${wn}): ` + (n.length ? n.map((s) => s.routineName || 'Entreno libre').join(', ') : 'sin entreno'));
   },
   progMetric: (el) => { progMetric = el.dataset.m; render(); },
