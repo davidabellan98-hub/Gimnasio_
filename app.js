@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = 27; // igual que VERSION en sw.js
+const APP_VERSION = 28; // igual que VERSION en sw.js
 
 /* ============ Estado y almacenamiento ============ */
 const KEY = 'gymlog.v1';
@@ -292,7 +292,7 @@ function go(t) {
 const TITLES = { home: 'Actividad', routines: 'Sesiones', routineEdit: 'Editar sesión', routineImport: 'Importar sesiones', train: 'Entrenar', history: 'Historial', progress: 'Progreso', report: 'Informe semanal', settings: 'Ajustes' };
 
 function render() {
-  $('#title').textContent = tab === 'train' && S.active && S.active.past ? (S.active.editingId ? 'Editar entreno' : 'Registrar entreno') : (TITLES[tab] || 'GymLog');
+  $('#title').textContent = tab === 'train' && S.active && S.active.past ? (S.active.editingId ? 'Editar entreno' : 'Registrar entrenamiento') : (TITLES[tab] || 'GymLog');
   document.querySelectorAll('.tabbar button').forEach((b) => {
     b.classList.toggle('active', b.dataset.tab === tab || ((tab === 'routineEdit' || tab === 'routineImport') && b.dataset.tab === 'routines'));
   });
@@ -370,13 +370,13 @@ function viewHome() {
     </div>
     ${S.active ? `<button class="primary block" style="margin-top:12px" data-act="go" data-tab="train">Continuar entreno en curso</button>`
       : `<button class="primary block" style="margin-top:12px" data-act="go" data-tab="train">Empezar entrenamiento</button>
-         <button class="block" style="margin-top:8px" data-act="pastPick">Registrar entreno ya hecho</button>`}
+         <button class="block" style="margin-top:8px" data-act="pastPick">Registrar entrenamiento finalizado</button>`}
     <h2>Constancia</h2>
     <div class="card"><div class="heat">${grid}</div></div>
     <h2>Días por semana</h2>
     <div class="card"><div class="weeks">${bars}</div>
       </div>
-    ${last ? `<h2>Último entreno</h2><div class="card"><b>${esc(last.routineName || 'Entreno libre')}</b>
+    ${last ? `<h2>Último entreno</h2><div class="card"><b>${esc(last.routineName || 'Entrenamiento libre')}</b>
       <p class="muted">${fmtDate(last.date, { weekday: 'long', day: 'numeric', month: 'long' })} · ${fmtDur(last.duration)} · ${sessSets(last)} series</p></div>` : ''}
   `;
 }
@@ -384,7 +384,7 @@ function viewHome() {
 function viewRoutines() {
   const list = S.routines.map((r) => `
     <div class="card">
-      <div class="row between"><h3>${esc(r.name)}</h3><span class="muted small">${r.exercises.length} ejercicios</span></div>
+      <div class="row between"><h3>${esc(r.name)}</h3><span class="muted small">${r.exercises.length} ${r.exercises.length === 1 ? "ejercicio" : "ejercicios"}</span></div>
       <p class="muted small">${esc(r.exercises.map((e) => e.name).join(' · ') || 'Sin ejercicios')}</p>
       <div class="row" style="margin-top:8px">
         <button class="primary grow" data-act="startRoutine" data-id="${r.id}">Empezar</button>
@@ -458,23 +458,23 @@ function viewRoutineEdit() {
 let pastPicking = false;
 function viewTrain() {
   if (!S.active && pastPicking) {
-    const opts = S.routines.map((r) => `<button class="block pick" style="margin-bottom:8px;text-align:left" data-act="startPast" data-id="${r.id}"><b>${esc(r.name)}</b><br><span class="muted small">${r.exercises.length} ejercicios</span></button>`).join('');
+    const opts = S.routines.map((r) => `<button class="block pick" style="margin-bottom:8px;text-align:left" data-act="startPast" data-id="${r.id}"><b>${esc(r.name)}</b><br><span class="muted small">${r.exercises.length} ${r.exercises.length === 1 ? "ejercicio" : "ejercicios"}</span></button>`).join('');
     return `
       <h2>¿Qué sesión hiciste?</h2>
       ${opts}
-      <button class="primary block" data-act="startPast" data-id="">Entreno libre</button>
+      <button class="primary block" data-act="startPast" data-id="">Entrenamiento libre</button>
       <button class="block" style="margin-top:10px" data-act="pastCancel">Cancelar</button>
       <p class="muted small" style="margin-top:12px">Después eliges el día y las horas de inicio y fin, y apuntas las series que hiciste.</p>
     `;
   }
   if (!S.active) {
-    const opts = S.routines.map((r) => `<button class="block pick" style="margin-bottom:8px;text-align:left" data-act="startRoutine" data-id="${r.id}"><b>${esc(r.name)}</b><br><span class="muted small">${r.exercises.length} ejercicios</span></button>`).join('');
+    const opts = S.routines.map((r) => `<button class="block pick" style="margin-bottom:8px;text-align:left" data-act="startRoutine" data-id="${r.id}"><b>${esc(r.name)}</b><br><span class="muted small">${r.exercises.length} ${r.exercises.length === 1 ? "ejercicio" : "ejercicios"}</span></button>`).join('');
     return `
       <h2>¿Qué toca hoy?</h2>
-      ${opts || '<p class="muted">No tienes sesiones aún. Puedes crear una en "Sesiones" o hacer un entreno libre.</p>'}
-      <button class="primary block" data-act="startFree">Entreno libre</button>
+      ${opts || '<p class="muted">No tienes sesiones aún. Puedes crear una en "Sesiones" o hacer un entrenamiento libre.</p>'}
+      <button class="primary block" data-act="startFree">Entrenamiento libre</button>
       <h2>¿Ya has entrenado?</h2>
-      <button class="block" data-act="pastPick">Registrar entreno ya hecho</button>
+      <button class="block" data-act="pastPick">Registrar entrenamiento finalizado</button>
     `;
   }
   const a = S.active;
@@ -505,7 +505,7 @@ function viewTrain() {
   const startLocal = (() => { const d = new Date(a.date); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); })();
   const head = a.past ? `
     <div class="card ex-card">
-      <h3>${esc(a.routineName || 'Entreno libre')}</h3>
+      <h3>${esc(a.routineName || 'Entrenamiento libre')}</h3>
       <label>Día</label>
       <input type="date" data-wbind="pdate" value="${ymd(a.date)}" max="${ymd(new Date())}">
       <div class="row">
@@ -515,7 +515,7 @@ function viewTrain() {
       <p class="muted small" style="margin-top:8px">Duración: <b id="pdur">${fmtDur(pastDuration(a))}</b></p>
     </div>` : `
     <div class="row between" style="margin-bottom:10px">
-      <div><b>${esc(a.routineName || 'Entreno libre')}</b><br><span class="muted small">Tiempo: <span id="elapsed" class="elapsed">—</span></span></div>
+      <div><b>${esc(a.routineName || 'Entrenamiento libre')}</b><br><span class="muted small">Tiempo: <span id="elapsed" class="elapsed">—</span></span></div>
     </div>`;
   return `
     ${head}
@@ -551,7 +551,7 @@ function viewHistory() {
     html += `
       <details class="card">
         <summary>
-          <div class="row between"><b>${esc(s.routineName || 'Entreno libre')}</b><span class="muted small">${fmtDate(s.date)}</span></div>
+          <div class="row between"><b>${esc(s.routineName || 'Entrenamiento libre')}</b><span class="muted small">${fmtDate(s.date)}</span></div>
           <p class="muted small">${fmtDur(s.duration)} · ${sessSets(s)} series · ${fmtN(sessVolume(s))} kg volumen${s.energy ? ' · energía ' + s.energy + '/5' : ''}</p>
         </summary>
         <div class="session-sets">
@@ -700,7 +700,7 @@ function buildReport(ws) {
   if (!list.length) L.push('_No hubo entrenos esta semana._');
   for (const s of list) {
     const d = new Date(s.date);
-    L.push(`### ${DAYS[(d.getDay() + 6) % 7]} ${d.getDate()} — ${s.routineName || 'Entreno libre'}`);
+    L.push(`### ${DAYS[(d.getDay() + 6) % 7]} ${d.getDate()} — ${s.routineName || 'Entrenamiento libre'}`);
     L.push(`Duración: ${fmtDur(s.duration)}${s.energy ? ` · Energía: ${s.energy}/5` : ''} · Volumen: ${fmtN(sessVolume(s))} kg`);
     L.push('');
     L.push('| Ejercicio | Series (kg×reps) | Mejor serie | e1RM est. |');
@@ -918,7 +918,7 @@ const actions = {
     const d = el.dataset.d; const n = S.sessions.filter((s) => ymd(s.date) === d);
     const f = fmtDate(d + 'T12:00', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
     const wn = isoWeek(new Date(d + 'T12:00'));
-    toast(`${f} (semana ${wn}): ` + (n.length ? n.map((s) => s.routineName || 'Entreno libre').join(', ') : 'sin entreno'));
+    toast(`${f} (semana ${wn}): ` + (n.length ? n.map((s) => s.routineName || 'Entrenamiento libre').join(', ') : 'sin entreno'));
   },
   progMetric: (el) => { progMetric = el.dataset.m; render(); },
   progPick: (el) => { progEx = el.dataset.name; progMetric = null; go('progress'); },
