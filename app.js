@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = 25; // igual que VERSION en sw.js
+const APP_VERSION = 26; // igual que VERSION en sw.js
 
 /* ============ Estado y almacenamiento ============ */
 const KEY = 'gymlog.v1';
@@ -769,7 +769,8 @@ function newActive(routine) {
         target: `${e.sets || '?'}×${e.reps || '?'}${num(e.weight) ? ' @ ' + fmtN(num(e.weight)) + ' kg' : ''}`,
         sets: Array.from({ length: n }, (_, j) => {
           const ls = last && (last.ex.sets[j] || last.ex.sets[last.ex.sets.length - 1]);
-          return { w: '', r: '', pw: e.weight || (ls ? ls.w : ''), pr: reps || (ls ? ls.r : ''), done: false };
+          const pw = num(e.weight) || (ls ? num(ls.w) : 0);
+          return { w: '', r: '', pw: pw ? fmtN(pw) : '', pr: reps || (ls ? ls.r : ''), done: false };
         })
       });
     }
