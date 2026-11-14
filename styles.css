@@ -20,8 +20,8 @@ body {
   font: 16px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
   padding-top: env(safe-area-inset-top);
   /* menú inferior flotante: alto y distancia al borde inferior del iPhone */
-  --nav-h: 70px;
-  --nav-gap: max(12px, calc(env(safe-area-inset-bottom) - 14px));
+  --nav-h: 64px;
+  --nav-gap: max(12px, min(22px, env(safe-area-inset-bottom)));
   padding-bottom: calc(var(--nav-h) + var(--nav-gap) + 24px);
 }
 .topbar {
@@ -74,7 +74,7 @@ label { display: block; font-size: 13px; color: var(--muted); margin: 8px 0 4px;
 /* Menú inferior: cápsula flotante y opaca, separada del borde como en las apps de iOS */
 .tabbar {
   position: fixed; z-index: 10;
-  left: 12px; right: 12px; bottom: var(--nav-gap);
+  left: var(--nav-gap); right: var(--nav-gap); bottom: var(--nav-gap);
   max-width: 616px; margin: 0 auto;
   height: var(--nav-h); padding: 5px;
   display: flex; gap: 0;
@@ -88,7 +88,7 @@ label { display: block; font-size: 13px; color: var(--muted); margin: 8px 0 4px;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
   white-space: nowrap;
 }
-.tabbar button span { font-size: 24px; line-height: 1; height: 28px; display: flex; align-items: center; justify-content: center; }
+.tabbar button span { font-size: 24px; line-height: 1; height: 26px; display: flex; align-items: center; justify-content: center; }
 .tabbar button.active { color: var(--accent); background: #0a0a0a; flex-grow: 1.4; }
 .tabbar .primary-tab.live span { color: var(--ok); }
 
@@ -188,8 +188,8 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .set-head span { color: var(--accent); font-weight: 600; }
 .elapsed { color: var(--accent); }
 .set .chk { color: var(--accent); border-color: var(--accent); }
-.tabbar button span svg { width: 27px; height: 27px; display: block; fill: currentColor; }
-.tabbar button span svg.st { fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.tabbar button span svg { width: 25px; height: 25px; display: block; fill: currentColor; }
+.tabbar button span svg.st { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 .tabbar button span svg.st .f { fill: currentColor; stroke: none; }
 .pick { border-left: 3px solid var(--accent); }
 /* Si iOS deja un hueco bajo la barra de pestañas, se rellena con su mismo color */
