@@ -1,70 +1,74 @@
-# Genera el logo de la app (uso: python3 tools/logo.py <carpeta>) → metal-plata-rojo.png a 1024 px.
-# Logo G curvada y metálica: se pinta píxel a píxel (con sobremuestreo) para simular reflejos de metal.
-import sys, numpy as np
-from PIL import Image, ImageFilter
-OUT = sys.argv[1]
-N = 1024; SS = 3; M = N * SS
-y, x = np.mgrid[0:M, 0:M].astype(np.float32) / SS
-cx, cy = 512.0, 512.0
-R_out, W = 318.0, 118.0; R_in = R_out - W
-dx, dy = x - cx, y - cy
-b, rc = 318.0, 170.0                      # semilado y radio de esquina del cuadrado redondeado
-qx, qy = np.abs(dx) - (b - rc), np.abs(dy) - (b - rc)
-dist = np.hypot(np.maximum(qx, 0), np.maximum(qy, 0)) + np.minimum(np.maximum(qx, qy), 0) - rc
-r = R_out + dist
-ang = np.degrees(np.arctan2(dy, dx))          # 0 = derecha, -90 = arriba (pantalla)
-A0 = -42.0                                    # empieza arriba a la derecha y gira por la izquierda hasta la derecha
-sweep = (A0 - ang) % 360                      # 0..360 recorriendo la G en sentido antihorario
-in_band = (r >= R_in) & (r <= R_out)
-arc = in_band & (sweep <= 318.0)              # de -42° a 0°: 318° de recorrido
-# Travesaño: banda horizontal que sale del final del arco hacia dentro, por encima de la línea media
-bar_y0, bar_y1 = cy - W, cy
-bar_x0, bar_x1 = cx + 30, cx + R_out
-bar = (y >= bar_y0) & (y <= bar_y1) & (x >= bar_x0) & (x <= bar_x1)
-# Doblez: en el cuadrado donde se unen arco y travesaño, la diagonal separa las dos caras
-sq = bar & (x >= cx + R_in)
-fold_bar = sq & ((x - (cx + R_in)) < ((cy) - y))          # triángulo superior-izquierdo → cara del travesaño
-bar_face = (bar & ~sq) | fold_bar
-arc_face = (arc & ~bar_face) | (sq & ~fold_bar)
-t = np.clip((r - R_in) / W, 0, 1)                            # 0 borde interior → 1 borde exterior
+"""Genera el logo de GymLog: una G en perspectiva isométrica (como una cinta doblada),
+con acabado de rojo metalizado.
 
-def metal(v):  # v 0..1 → brillo con aspecto metálico (contraste en S)
-    return np.clip(0.5 - 0.5 * np.cos(np.pi * np.clip(v, 0, 1)), 0, 1)
-# Reflejo a lo largo de la curva: dos franjas de luz, como un aro de acero
-th = np.radians(sweep)
-v_arc = 0.30 + 0.55 * (0.5 + 0.5 * np.cos(2 * (th - 0.9))) + 0.12 * (1 - np.abs(2 * t - 1)) ** 2
-v_arc = metal(v_arc)
-# Cara del travesaño: degradado horizontal más oscuro (está doblada respecto al arco)
-u = np.clip((x - bar_x0) / (bar_x1 - bar_x0), 0, 1)
-v_bar = metal(0.25 + 0.45 * u + 0.08 * (1 - np.abs(2 * (y - bar_y0) / W - 1)))
+Uso:  python3 tools/logo.py <carpeta> [--rojo | --plata-rojo | --plata]  →  <carpeta>/logo-1024.png
+"""
+import sys, math, numpy as np
+from PIL import Image, ImageDraw, ImageFilter
 
-def paint(pal_arc, pal_bar, name):
-    img = np.zeros((M, M, 3), np.float32)
-    g = (1 - y / M)[..., None]
-    img[:] = np.array([6, 6, 6]) + g * np.array([22, 22, 22])                 # fondo negro con degradado
-    # sombra suave de la letra sobre el fondo
-    mask = (arc_face | bar_face).astype(np.float32)
-    sh = Image.fromarray((mask * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(28 * SS))
-    sh = np.roll(np.roll(np.asarray(sh, np.float32) / 255, 14 * SS, 0), 6 * SS, 1)[..., None]
-    img *= (1 - 0.6 * sh)
-    for face, v, pal in ((arc_face, v_arc, pal_arc), (bar_face, v_bar, pal_bar)):
-        c = pal(v)
-        img[face] = c[face]
-    # filo: línea fina más clara en el borde exterior y más oscura en el interior (canto del metal)
-    edge_o = arc_face & (r > R_out - 3.5)
-    img[edge_o] = np.minimum(img[edge_o] * 1.35 + 20, 255)
-    edge_i = arc_face & (r < R_in + 2.5)
-    img[edge_i] *= 0.6
-    im = Image.fromarray(np.clip(img, 0, 255).astype(np.uint8)).resize((N, N), Image.LANCZOS)
-    im.save(f'{OUT}/metal-{name}.png')
+N, SS = 1024, 3          # tamaño final y sobremuestreo para bordes suaves
+M = N * SS
+
+def quads(pts, w):
+    """Divide una línea quebrada de grosor w en un cuadrilátero por tramo, con uniones en inglete."""
+    h = w / 2; n = len(pts)
+    unit = lambda a, b: ((b[0]-a[0]) / math.hypot(b[0]-a[0], b[1]-a[1]), (b[1]-a[1]) / math.hypot(b[0]-a[0], b[1]-a[1]))
+    dirs = [unit(pts[i], pts[i+1]) for i in range(n-1)]
+    nrm = lambda d: (-d[1], d[0])
+    L, R = [], []
+    for i in range(n):
+        if i in (0, n-1):
+            nx, ny = nrm(dirs[0] if i == 0 else dirs[-1])
+            L.append((pts[i][0]+nx*h, pts[i][1]+ny*h)); R.append((pts[i][0]-nx*h, pts[i][1]-ny*h))
+        else:
+            n1, n2 = nrm(dirs[i-1]), nrm(dirs[i]); mx, my = n1[0]+n2[0], n1[1]+n2[1]; ml = math.hypot(mx, my); mx, my = mx/ml, my/ml
+            k = h / (mx*n1[0] + my*n1[1])
+            L.append((pts[i][0]+mx*k, pts[i][1]+my*k)); R.append((pts[i][0]-mx*k, pts[i][1]-my*k))
+    return [([L[i], L[i+1], R[i+1], R[i]], dirs[i]) for i in range(n-1)]
+
+def s_curve(v):
+    v = np.clip(v, 0, 1); return 0.5 - 0.5 * np.cos(np.pi * v)
 
 def silver(v):
-    lo, mid, hi = np.array([58, 60, 66]), np.array([170, 174, 182]), np.array([250, 251, 253])
-    v = v[..., None]
-    return np.where(v < 0.55, lo + (mid - lo) * (v / 0.55), mid + (hi - mid) * ((v - 0.55) / 0.45))
-def redmetal(v):
-    lo, mid, hi = np.array([70, 0, 0]), np.array([215, 12, 4]), np.array([255, 150, 140])
-    v = v[..., None]
-    return np.where(v < 0.6, lo + (mid - lo) * (v / 0.6), mid + (hi - mid) * ((v - 0.6) / 0.4))
+    lo, mid, hi = np.array([52, 54, 60]), np.array([168, 172, 180]), np.array([250, 251, 253]); v = v[..., None]
+    return np.where(v < 0.55, lo + (mid-lo) * (v/0.55), mid + (hi-mid) * ((v-0.55)/0.45))
 
-paint(silver, redmetal, 'plata-rojo')  # logo actual
+def redmetal(v):
+    lo, mid, hi = np.array([48, 0, 0]), np.array([210, 10, 2]), np.array([255, 128, 104]); v = v[..., None]
+    return np.where(v < 0.62, lo + (mid-lo) * (v/0.62), mid + (hi-mid) * ((v-0.62)/0.38))
+
+def render(out_path, style='rojo'):
+    """style: 'rojo' (todo rojo metálico), 'plata-rojo' (plata con travesaño rojo) o 'plata'."""
+    yy, xx = np.mgrid[0:M, 0:M].astype(np.float32)
+    def mask(poly):
+        im = Image.new('L', (M, M), 0); ImageDraw.Draw(im).polygon(poly, fill=255); return np.asarray(im, np.float32) / 255
+    # G sobre un hexágono con punta arriba: tramos a 30° como en un dibujo isométrico
+    R, W = 330.0, 118.0
+    c, s = math.cos(math.radians(30)), 0.5
+    V = lambda a, b: (512 + a * R, 512 + b * R)
+    pts = [V(c, -s), V(0, -1), V(-c, -s), V(-c, s), V(0, 1), V(c, s), V(c, 0.02), V(0.22, 0.02)]
+    Q = quads([(x * SS, y * SS) for x, y in pts], W * SS)
+
+    img = np.zeros((M, M, 3), np.float32); img[:] = 6 + (1 - yy / M)[..., None] * 22   # fondo negro con degradado
+    allm = np.zeros((M, M), np.float32); faces = []
+    for idx, (poly, d) in enumerate(Q):
+        m = mask(poly); allm = np.maximum(allm, m)
+        xs_ = [p[0] for p in poly]; ys_ = [p[1] for p in poly]
+        u = ((xx - min(xs_)) / (max(xs_) - min(xs_) + 1e-6) + (yy - min(ys_)) / (max(ys_) - min(ys_) + 1e-6)) / 2
+        if abs(d[0]) < 0.2:   base = 0.30   # tramo vertical: cara en sombra
+        elif abs(d[1]) < 0.2: base = 0.55   # travesaño
+        elif d[0] * d[1] > 0: base = 0.80   # orientación "\": la cara más iluminada
+        else:                 base = 0.58   # orientación "/": cara intermedia
+        v = base + 0.16 * np.cos(2 * np.pi * u + 0.8) + 0.06          # reflejo a lo largo de cada cara
+        pal = redmetal if style == 'rojo' or (style == 'plata-rojo' and idx == len(Q) - 1) else silver
+        faces.append((m, s_curve(v), pal))
+    sh = Image.fromarray((allm * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(26 * SS))   # sombra suave
+    sh = np.roll(np.roll(np.asarray(sh, np.float32) / 255, 14 * SS, 0), 6 * SS, 1)[..., None]
+    img *= (1 - 0.6 * sh)
+    for m, v, pal in faces:
+        a = m[..., None]; img = img * (1 - a) + pal(v) * a
+    Image.fromarray(np.clip(img, 0, 255).astype(np.uint8)).resize((N, N), Image.LANCZOS).save(out_path)
+
+if __name__ == '__main__':
+    style = next((a[2:] for a in sys.argv[2:] if a.startswith('--')), 'rojo')
+    render(sys.argv[1].rstrip('/') + '/logo-1024.png', style)
