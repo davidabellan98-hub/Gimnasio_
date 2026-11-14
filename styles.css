@@ -177,3 +177,5 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .set-head span { color: var(--accent); font-weight: 600; }
 .elapsed { color: var(--accent); }
 .set .chk { color: var(--accent); border-color: var(--accent); }
+.tabbar button span svg { width: 26px; height: 20px; display: block; fill: currentColor; }
+.pick { border-left: 3px solid var(--accent); }

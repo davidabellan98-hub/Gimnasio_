@@ -354,7 +354,7 @@ function viewRoutineEdit() {
 
 function viewTrain() {
   if (!S.active) {
-    const opts = S.routines.map((r) => `<button class="block" style="margin-bottom:8px;text-align:left" data-act="startRoutine" data-id="${r.id}"><b>${esc(r.name)}</b><br><span class="muted small">${r.exercises.length} ejercicios</span></button>`).join('');
+    const opts = S.routines.map((r) => `<button class="block pick" style="margin-bottom:8px;text-align:left" data-act="startRoutine" data-id="${r.id}"><b>${esc(r.name)}</b><br><span class="muted small">${r.exercises.length} ejercicios</span></button>`).join('');
     return `
       <h2>¿Qué toca hoy?</h2>
       ${opts || '<p class="muted">No tienes rutinas aún. Puedes crear una en "Rutinas" o hacer un entreno libre.</p>'}
