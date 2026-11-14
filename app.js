@@ -255,12 +255,12 @@ function viewHome() {
     <div class="card">
       <div class="row between"><h3>Esta semana</h3><span class="pill ${thisWeek >= goal ? 'ok' : ''}">${thisWeek}/${goal} días</span></div>
       <div class="bar ${thisWeek >= goal ? 'done' : ''}"><i style="width:${pct}%"></i></div>
-      <p class="muted">${thisWeek >= goal ? '¡Objetivo semanal cumplido! 💪' : `Te faltan ${goal - thisWeek} día${goal - thisWeek === 1 ? '' : 's'} para tu objetivo.`}</p>
+      <p class="muted">${thisWeek >= goal ? '¡Objetivo semanal cumplido! 💪' : (goal - thisWeek === 1 ? 'Te falta 1 día para tu objetivo.' : `Te faltan ${goal - thisWeek} días para tu objetivo.`)}</p>
     </div>
     <div class="stats">
-      <div class="stat"><b>${streakWeeks()}</b><span>semanas seguidas cumpliendo</span></div>
-      <div class="stat"><b>${monthDays}</b><span>días este mes</span></div>
-      <div class="stat"><b>${S.sessions.length}</b><span>entrenos totales</span></div>
+      <div class="stat"><b>${streakWeeks()}</b><span>${streakWeeks() === 1 ? 'semana cumpliendo' : 'semanas seguidas cumpliendo'}</span></div>
+      <div class="stat"><b>${monthDays}</b><span>${monthDays === 1 ? 'día' : 'días'} este mes</span></div>
+      <div class="stat"><b>${S.sessions.length}</b><span>${S.sessions.length === 1 ? 'entreno' : 'entrenos'} en total</span></div>
     </div>
     ${S.active ? `<button class="primary block" style="margin-top:12px" data-act="go" data-tab="train">Continuar entreno en curso</button>`
       : `<button class="primary block" style="margin-top:12px" data-act="go" data-tab="train">Empezar entrenamiento</button>`}
