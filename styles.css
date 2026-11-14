@@ -64,7 +64,7 @@ button, .btn {
 button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
 button.danger { color: var(--danger); }
 button.ghost { background: transparent; border-color: transparent; color: var(--accent); }
-button.block { width: 100%; }
+button.block, .btn.block { width: 100%; font-weight: 600; }
 button.sm { min-height: 34px; padding: 6px 10px; font-size: 14px; }
 .icon-btn { background: transparent; border: none; color: var(--text); width: 46px; height: 46px; min-height: 46px; padding: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex: none; }
 .icon-btn svg { width: 46px; height: 46px; display: block; overflow: visible; }
