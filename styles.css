@@ -27,7 +27,7 @@ body {
 .topbar {
   position: sticky; top: 0; z-index: 5;
   display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 14px 14px 20px; min-height: 68px; background: var(--bg);
+  padding: 26px 14px 12px 20px; min-height: 84px; background: var(--bg);
   border-bottom: 1px solid var(--line);
 }
 .topbar h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.3px; margin: 0; }
@@ -155,7 +155,7 @@ pre.report {
 .pill.ok { background: var(--ok); color: #fff; }
 .empty { text-align: center; color: var(--muted); padding: 30px 10px; }
 .toast {
-  position: fixed; top: calc(80px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 20;
+  position: fixed; top: calc(96px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 20;
   background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 99px; font-size: 14px;
 }
 
