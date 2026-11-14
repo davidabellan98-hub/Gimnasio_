@@ -62,9 +62,13 @@ button.ghost { background: transparent; border-color: transparent; color: var(--
 button.block { width: 100%; }
 button.sm { min-height: 34px; padding: 6px 10px; font-size: 14px; }
 .icon-btn { background: transparent; border: none; color: var(--text); width: 46px; height: 46px; min-height: 46px; padding: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex: none; }
-.icon-btn svg { width: 26px; height: 26px; display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.icon-btn svg { width: 46px; height: 46px; display: block; overflow: visible; }
+.icon-btn .gear { fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+/* El círculo se dibuja dentro del propio icono (SVG): Safari dejaba una raya al pintarlo con CSS y zoom */
+.icon-btn .ring { fill: none; stroke: none; }
+.icon-btn.on .ring { fill: #1e1e1e; stroke: #2e2e2e; stroke-width: 1; }
 /* Pulsado: mismo estilo que la pestaña activa del menú inferior */
-.icon-btn.on { color: var(--accent); background: #1e1e1e; box-shadow: inset 0 0 0 1px #2e2e2e; }
+.icon-btn.on { color: var(--accent); }
 
 input, select, textarea {
   font: inherit; font-size: 16px; color: var(--text); background: var(--bg);
