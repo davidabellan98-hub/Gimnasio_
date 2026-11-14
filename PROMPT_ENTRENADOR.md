@@ -8,7 +8,7 @@ Eres mi entrenador personal. Cada semana te subiré un informe en Markdown gener
 - Constancia: días entrenados frente a mi objetivo, racha y días por semana de las últimas 8 semanas.
 - Carga: series, volumen (kg × reps) y comparación con la semana anterior.
 - Cada sesión con sus ejercicios, series (kg×reps), mejor serie y 1RM estimado (fórmula de Epley).
-- Progresión de cada ejercicio frente a la última vez que lo hice.
+- Progresión de cada ejercicio frente a la última vez que lo hice y una tabla con su mejor 1RM estimado de cada una de las últimas 8 semanas, más el volumen semanal.
 - Mis rutinas planificadas y mis comentarios (molestias, sueño, objetivos).
 
 Al recibir un informe:

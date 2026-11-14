@@ -109,14 +109,106 @@ function allExerciseNames() {
   return [...set].sort((a, b) => a.localeCompare(b, 'es'));
 }
 
+
+/* ============ Evolución ============ */
+// Una entrada por sesión en la que se hizo el ejercicio, de la más antigua a la más reciente.
+function exerciseSeries(name) {
+  const n = name.trim().toLowerCase();
+  const out = [];
+  for (const s of [...S.sessions].sort((a, b) => new Date(a.date) - new Date(b.date))) {
+    const exs = s.exercises.filter((e) => e.name.trim().toLowerCase() === n && e.sets.length);
+    if (!exs.length) continue;
+    const sets = exs.flatMap((e) => e.sets);
+    const b = bestSet({ sets });
+    out.push({
+      date: new Date(s.date),
+      e1rm: b ? b.v : 0,
+      maxW: Math.max(0, ...sets.map((st) => num(st.w))),
+      maxR: Math.max(0, ...sets.map((st) => num(st.r))),
+      vol: sets.reduce((a, st) => a + setVolume(st), 0),
+      best: b
+    });
+  }
+  return out;
+}
+// Ejercicios con historial, ordenados por los más usados últimamente.
+function trackedExercises() {
+  const m = new Map();
+  sorted().forEach((s, i) => s.exercises.forEach((e) => {
+    const k = e.name.trim().toLowerCase();
+    if (!k || !e.sets.length) return;
+    const c = m.get(k) || { name: e.name.trim(), n: 0, last: i };
+    c.n++; m.set(k, c);
+  }));
+  return [...m.values()].sort((a, b) => (b.n - a.n) || (a.last - b.last));
+}
+const METRICS = {
+  e1rm: { label: '1RM estimado', unit: 'kg', get: (p) => p.e1rm },
+  maxW: { label: 'Peso máximo', unit: 'kg', get: (p) => p.maxW },
+  maxR: { label: 'Reps máximas', unit: 'reps', get: (p) => p.maxR },
+  vol: { label: 'Volumen', unit: 'kg', get: (p) => p.vol }
+};
+
+/* ============ Gráficos (SVG) ============ */
+function niceTicks(min, max, n = 4) {
+  if (min === max) { min = min > 0 ? min * 0.9 : min - 1; max = max * 1.1 || 1; }
+  const raw = (max - min) / n;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map((f) => f * mag).find((x) => x >= raw);
+  const lo = Math.floor(min / step) * step;
+  const ticks = [];
+  for (let v = lo; v <= max + step * 0.001; v += step) ticks.push(+v.toFixed(6));
+  if (ticks[ticks.length - 1] < max) ticks.push(ticks[ticks.length - 1] + step);
+  return ticks;
+}
+// points: [{x: Date, y: number}]
+function lineChart(points, unit) {
+  const W = 340, H = 190, L = 40, R = 12, T = 14, B = 26;
+  if (points.length < 2) return '<p class="muted small">Necesitas al menos 2 sesiones de este ejercicio para ver la gráfica.</p>';
+  const xs = points.map((p) => +p.x), ys = points.map((p) => p.y);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs) || x0 + 1;
+  const ticks = niceTicks(Math.min(...ys), Math.max(...ys));
+  const y0 = ticks[0], y1 = ticks[ticks.length - 1];
+  const X = (v) => L + ((v - x0) / (x1 - x0 || 1)) * (W - L - R);
+  const Y = (v) => T + (1 - (v - y0) / (y1 - y0 || 1)) * (H - T - B);
+  const grid = ticks.map((t) => `<line x1="${L}" x2="${W - R}" y1="${Y(t)}" y2="${Y(t)}" class="g"/><text x="${L - 6}" y="${Y(t) + 4}" text-anchor="end">${fmtN(t)}</text>`).join('');
+  const path = points.map((p, i) => `${i ? 'L' : 'M'}${X(+p.x).toFixed(1)},${Y(p.y).toFixed(1)}`).join('');
+  const area = `${path}L${X(x1).toFixed(1)},${H - B}L${X(x0).toFixed(1)},${H - B}Z`;
+  const maxY = Math.max(...ys);
+  const dots = points.map((p) => `<circle cx="${X(+p.x).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="${p.y === maxY ? 4.5 : 3}" class="${p.y === maxY ? 'pr' : 'd'}"><title>${fmtDate(p.x, { day: 'numeric', month: 'short', year: 'numeric' })}: ${fmtN(p.y)} ${unit}</title></circle>`).join('');
+  const lab = (d) => fmtDate(d, { day: 'numeric', month: 'short' });
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Evolución">
+    ${grid}
+    <path d="${area}" class="a"/><path d="${path}" class="l"/>${dots}
+    <text x="${L}" y="${H - 6}">${lab(x0)}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${lab(x1)}</text>
+  </svg>`;
+}
+// bars: [{label, v, hi}]
+function barChart(bars, unit) {
+  const W = 340, H = 170, L = 40, R = 6, T = 12, B = 22;
+  const ticks = niceTicks(0, Math.max(1, ...bars.map((b) => b.v)));
+  const y1 = ticks[ticks.length - 1];
+  const Y = (v) => T + (1 - v / y1) * (H - T - B);
+  const bw = (W - L - R) / bars.length;
+  const grid = ticks.map((t) => `<line x1="${L}" x2="${W - R}" y1="${Y(t)}" y2="${Y(t)}" class="g"/><text x="${L - 6}" y="${Y(t) + 4}" text-anchor="end">${t >= 1000 ? fmtN(t / 1000) + 'k' : fmtN(t)}</text>`).join('');
+  const rects = bars.map((b, i) => {
+    const x = L + i * bw + bw * 0.18, w = bw * 0.64, y = Y(b.v);
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${Math.max(0, H - B - y).toFixed(1)}" rx="3" class="${b.hi ? 'bh' : 'b'}"><title>${b.label}: ${fmtN(b.v)} ${unit}</title></rect>` +
+      (i % 2 === bars.length % 2 || bars.length <= 8 ? `<text x="${(x + w / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle">${b.label}</text>` : '');
+  }).join('');
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Gráfico de barras">${grid}${rects}</svg>`;
+}
+
 /* ============ Navegación ============ */
 let tab = S.active ? 'train' : 'home';
 let routineDraft = null;
 let reportWeek = weekStart(new Date());
+let progEx = null;
+let progMetric = null;
 
 function go(t) { tab = t; render(); window.scrollTo(0, 0); }
 
-const TITLES = { home: 'GymLog', routines: 'Rutinas', routineEdit: 'Editar rutina', train: 'Entrenar', history: 'Historial', report: 'Informe semanal', settings: 'Ajustes' };
+const TITLES = { home: 'GymLog', routines: 'Rutinas', routineEdit: 'Editar rutina', train: 'Entrenar', history: 'Historial', progress: 'Progreso', report: 'Informe semanal', settings: 'Ajustes' };
 
 function render() {
   $('#title').textContent = TITLES[tab] || 'GymLog';
@@ -125,7 +217,7 @@ function render() {
   });
   $('.primary-tab').classList.toggle('live', !!S.active);
   $('#exnames').innerHTML = allExerciseNames().map((n) => `<option value="${esc(n)}">`).join('');
-  const v = { home: viewHome, routines: viewRoutines, routineEdit: viewRoutineEdit, train: viewTrain, history: viewHistory, report: viewReport, settings: viewSettings }[tab];
+  const v = { home: viewHome, routines: viewRoutines, routineEdit: viewRoutineEdit, train: viewTrain, history: viewHistory, progress: viewProgress, report: viewReport, settings: viewSettings }[tab];
   $('#view').innerHTML = v();
   if (tab === 'report') $('#reportText').textContent = buildReport(reportWeek);
 }
@@ -324,6 +416,61 @@ function viewHistory() {
   return html;
 }
 
+
+function viewProgress() {
+  const list = trackedExercises();
+  if (!list.length) return '<div class="empty">Aquí verás tu evolución cuando guardes tus primeros entrenos.</div>';
+  if (!progEx || !list.some((e) => e.name.toLowerCase() === progEx.toLowerCase())) progEx = list[0].name;
+  const series = exerciseSeries(progEx);
+  const hasWeight = series.some((p) => p.maxW > 0);
+  if (!progMetric || (!hasWeight && progMetric !== 'maxR')) progMetric = hasWeight ? 'e1rm' : 'maxR';
+  const M = METRICS[progMetric];
+  const pts = series.map((p) => ({ x: p.date, y: M.get(p) }));
+  const first = pts[0], last = pts[pts.length - 1];
+  const best = pts.reduce((a, p) => (p.y > a.y ? p : a), pts[0]);
+  const ch = first.y ? ((last.y - first.y) / first.y) * 100 : 0;
+  const metricBtns = Object.entries(METRICS).filter(([k]) => hasWeight || k === 'maxR')
+    .map(([k, m]) => `<button class="seg ${k === progMetric ? 'on' : ''}" data-act="progMetric" data-m="${k}">${m.label}</button>`).join('');
+
+  // Volumen y series por semana (12 semanas)
+  const ws = weekStart(new Date());
+  const weeks = [];
+  for (let i = 11; i >= 0; i--) {
+    const w = addDays(ws, -7 * i); const l = sessionsInWeek(w);
+    weeks.push({ label: fmtDate(w, { day: 'numeric', month: 'numeric' }), v: l.reduce((a, s) => a + sessVolume(s), 0), sets: l.reduce((a, s) => a + sessSets(s), 0), hi: i === 0 });
+  }
+
+  // Récords personales
+  const prs = list.map((e) => {
+    const sr = exerciseSeries(e.name);
+    const top = sr.reduce((a, p) => (!a || p.e1rm > a.e1rm || (!p.e1rm && !a.e1rm && p.maxR > a.maxR) ? p : a), null);
+    return { name: e.name, top };
+  }).filter((x) => x.top && x.top.best);
+
+  return `
+    <label>Ejercicio</label>
+    <select data-prog="ex">${list.map((e) => `<option ${e.name.toLowerCase() === progEx.toLowerCase() ? 'selected' : ''}>${esc(e.name)}</option>`).join('')}</select>
+    <div class="segs">${metricBtns}</div>
+    <div class="card">
+      <div class="row between"><h3>${esc(M.label)}</h3><span class="muted small">${series.length} sesiones</span></div>
+      ${lineChart(pts, M.unit)}
+      <div class="stats mini">
+        <div class="stat"><b>${fmtN(last.y)}</b><span>último (${M.unit})</span></div>
+        <div class="stat"><b class="${ch > 0 ? 'up' : ch < 0 ? 'down' : ''}">${ch > 0 ? '+' : ''}${fmtN(ch)}%</b><span>desde el inicio</span></div>
+        <div class="stat"><b>${fmtN(best.y)}</b><span>récord · ${fmtDate(best.x, { day: 'numeric', month: 'short' })}</span></div>
+      </div>
+    </div>
+    <h2>Volumen semanal (kg × reps)</h2>
+    <div class="card">${barChart(weeks, 'kg')}<p class="muted small">Últimas 12 semanas. La barra resaltada es la semana actual.</p></div>
+    <h2>Series por semana</h2>
+    <div class="card">${barChart(weeks.map((w) => ({ ...w, v: w.sets })), 'series')}</div>
+    <h2>Récords personales</h2>
+    <div class="card"><table class="tbl"><thead><tr><th>Ejercicio</th><th>Mejor serie</th><th>1RM est.</th></tr></thead><tbody>
+      ${prs.map((p) => `<tr data-act="progPick" data-name="${esc(p.name)}"><td>${esc(p.name)}</td><td>${p.top.best.w ? fmtN(p.top.best.w) + '×' : ''}${p.top.best.r}<br><span class="muted small">${fmtDate(p.top.date, { day: 'numeric', month: 'short', year: '2-digit' })}</span></td><td>${p.top.e1rm ? fmtN(p.top.e1rm) + ' kg' : '—'}</td></tr>`).join('')}
+    </tbody></table><p class="muted small">1RM estimado con la fórmula de Epley. Toca un ejercicio para ver su gráfica.</p></div>
+  `;
+}
+
 function viewReport() {
   const wk = ymd(reportWeek);
   const end = addDays(reportWeek, 6);
@@ -359,7 +506,7 @@ function viewSettings() {
     <h2>Instalar en el iPhone</h2>
     <div class="card"><p class="small">Abre esta página en <b>Safari</b> → botón <b>Compartir</b> → <b>Añadir a pantalla de inicio</b>. Se abrirá como una app y funciona sin conexión.</p></div>
     <button class="danger block" style="margin-top:20px" data-act="wipe">Borrar todos los datos</button>
-    <p class="muted small" style="text-align:center;margin-top:16px">GymLog v1</p>
+    <p class="muted small" style="text-align:center;margin-top:16px">GymLog v2</p>
   `;
 }
 
@@ -439,6 +586,30 @@ function buildReport(ws) {
       const f = (b) => (b ? (b.w ? fmtN(b.w) + '×' : '') + b.r : '-');
       L.push(`| ${name} | ${f(best)} | ${pb ? f(pb) + ' (' + fmtDate(p.session.date, { day: 'numeric', month: 'short' }) + ')' : '-'} | ${ch} |`);
     }
+    L.push('');
+  }
+
+
+  // Evolución de las últimas 8 semanas (mejor 1RM estimado de cada semana)
+  if (byName.size) {
+    const wks = []; for (let i = 7; i >= 0; i--) wks.push(addDays(ws, -7 * i));
+    L.push('## Evolución últimas 8 semanas (mejor e1RM semanal, kg; "-" = no se hizo)');
+    L.push('| Ejercicio | ' + wks.map((w) => fmtDate(w, { day: 'numeric', month: 'numeric' })).join(' | ') + ' |');
+    L.push('|---|' + wks.map(() => '---').join('|') + '|');
+    for (const { name } of byName.values()) {
+      const sr = exerciseSeries(name);
+      const cells = wks.map((w) => {
+        const we2 = addDays(w, 7);
+        const inW = sr.filter((p) => p.date >= w && p.date < we2);
+        if (!inW.length) return '-';
+        const m = Math.max(...inW.map((p) => p.e1rm));
+        return m ? fmtN(m) : Math.max(...inW.map((p) => p.maxR)) + ' reps';
+      });
+      L.push(`| ${name} | ${cells.join(' | ')} |`);
+    }
+    const vols = wks.map((w) => fmtN(sessionsInWeek(w).reduce((a, s) => a + sessVolume(s), 0)));
+    L.push('');
+    L.push(`Volumen semanal (kg): ${vols.join(' · ')}`);
     L.push('');
   }
 
@@ -552,6 +723,8 @@ const actions = {
     S.active = { id: uid(), editingId: s.id, date: s.date, startedAt: null, durationManual: s.duration, routineId: s.routineId, routineName: s.routineName, notes: s.notes, energy: s.energy, exercises: s.exercises.map((e) => ({ name: e.name, rest: 90, sets: e.sets.map((st) => ({ w: st.w, r: st.r, done: true })) })) };
     save(); go('train');
   },
+  progMetric: (el) => { progMetric = el.dataset.m; render(); },
+  progPick: (el) => { progEx = el.dataset.name; progMetric = null; go('progress'); },
   repWeek: (el) => { reportWeek = addDays(reportWeek, 7 * +el.dataset.d); render(); },
   repCopy: async () => {
     const text = buildReport(reportWeek);
@@ -640,6 +813,8 @@ document.addEventListener('input', (e) => {
   } else if (t.dataset.repnotes !== undefined) {
     S.reportNotes[t.dataset.repnotes] = t.value; save();
     $('#reportText').textContent = buildReport(reportWeek);
+  } else if (t.dataset.prog === 'ex') {
+    progEx = t.value; progMetric = null; render();
   } else if (t.dataset.setting) {
     S.settings[t.dataset.setting] = parseInt(t.value, 10); save();
   }

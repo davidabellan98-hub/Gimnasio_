@@ -84,7 +84,7 @@ label { display: block; font-size: 13px; color: var(--muted); margin: 8px 0 4px;
 
 .tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
-  display: grid; grid-template-columns: repeat(5, 1fr);
+  display: grid; grid-template-columns: repeat(6, 1fr);
   background: var(--card); border-top: 1px solid var(--line);
   padding-bottom: env(safe-area-inset-bottom);
 }
@@ -153,3 +153,25 @@ pre.report {
   position: fixed; top: calc(60px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 20;
   background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 99px; font-size: 14px;
 }
+
+/* gráficos de progreso */
+.chart { width: 100%; height: auto; display: block; margin: 6px 0; }
+.chart text { font-size: 10px; fill: var(--muted); }
+.chart .g { stroke: var(--line); stroke-width: 1; }
+.chart .l { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.chart .a { fill: var(--accent); opacity: .12; }
+.chart .d { fill: var(--card); stroke: var(--accent); stroke-width: 2; }
+.chart .pr { fill: var(--ok); stroke: var(--card); stroke-width: 1.5; }
+.chart .b { fill: var(--heat1); }
+.chart .bh { fill: var(--accent); }
+.segs { display: flex; gap: 6px; overflow-x: auto; margin: 10px 0; padding-bottom: 2px; }
+.seg { min-height: 34px; padding: 6px 12px; font-size: 14px; border-radius: 99px; white-space: nowrap; }
+.seg.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.stats.mini .stat { padding: 8px 4px; }
+.stats.mini .stat b { font-size: 18px; }
+.up { color: var(--ok); }
+.down { color: var(--danger); }
+.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tbl th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 500; padding: 4px 4px 6px; }
+.tbl td { border-top: 1px solid var(--line); padding: 8px 4px; vertical-align: top; }
+.tbl tr[data-act] { cursor: pointer; }
