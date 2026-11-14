@@ -14,6 +14,22 @@
   <link rel="icon" href="icons/icon-192.png">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="styles.css">
+  <script>
+    // Si el iPhone muestra la app con zoom de página (p. ej. el «aA» de Safari al 75 %), todo sale más pequeño.
+    // Se compensa para que 1 px de la app sea 1 punto de la pantalla, como en las apps nativas.
+    (function () {
+      function fit() {
+        var de = document.documentElement;
+        var ref = innerWidth > innerHeight ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
+        var r = innerWidth / ref;
+        var ios = /iP(hone|ad|od)/.test(navigator.userAgent);
+        de.style.zoom = ios && r > 1.05 && r < 2 ? r : '';
+        window.__zoomFix = r;
+      }
+      fit();
+      addEventListener('resize', fit);
+    })();
+  </script>
 </head>
 <body>
   <header class="topbar">

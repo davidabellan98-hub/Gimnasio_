@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = 16; // igual que VERSION en sw.js
+const APP_VERSION = 17; // igual que VERSION en sw.js
 
 /* ============ Estado y almacenamiento ============ */
 const KEY = 'gymlog.v1';
@@ -546,7 +546,7 @@ function viewSettings() {
     <h2>Instalar en el iPhone</h2>
     <div class="card"><p class="small">Abre esta página en <b>Safari</b> → botón <b>Compartir</b> → <b>Añadir a pantalla de inicio</b>. Se abrirá como una app y funciona sin conexión.</p></div>
     <button class="danger block" style="margin-top:20px" data-act="wipe">Borrar todos los datos</button>
-    <p class="muted small" style="text-align:center;margin-top:16px">GymLog · versión ${APP_VERSION}</p>
+    <p class="muted small" style="text-align:center;margin-top:16px">GymLog · versión ${APP_VERSION}<br>Pantalla ${Math.min(screen.width, screen.height)} pt · vista ${innerWidth} px${window.__zoomFix > 1.05 ? ' · zoom compensado ×' + fmtN(window.__zoomFix) : ''}</p>
   `;
 }
 
