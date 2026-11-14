@@ -1,3 +1,8 @@
+/* Letra de la app: Archivo (SIL Open Font License, ver fonts/OFL.txt), guardada en la app para que funcione sin conexión */
+@font-face { font-family: 'Archivo'; font-style: normal; font-weight: 400; font-display: swap; src: url('fonts/archivo-400.woff2') format('woff2'); }
+@font-face { font-family: 'Archivo'; font-style: normal; font-weight: 600; font-display: swap; src: url('fonts/archivo-600.woff2') format('woff2'); }
+@font-face { font-family: 'Archivo'; font-style: normal; font-weight: 700; font-display: swap; src: url('fonts/archivo-700.woff2') format('woff2'); }
+@font-face { font-family: 'Archivo'; font-style: normal; font-weight: 800; font-display: swap; src: url('fonts/archivo-800.woff2') format('woff2'); }
 :root {
   --bg: #0a0a0a;
   --card: #161616;
@@ -17,7 +22,7 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; background: var(--bg); color: var(--text); }
 body {
-  font: 16px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  font: 16px/1.4 "Archivo", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
   padding-top: env(safe-area-inset-top);
   /* menú inferior flotante: alto y distancia al borde inferior del iPhone */
   --nav-h: 62px;
@@ -30,9 +35,9 @@ body {
   padding: 21px 14px 7px 20px; min-height: 84px; background: var(--bg);
   border-bottom: 1px solid var(--line);
 }
-.topbar h1 { font-size: 28px; line-height: 56px; font-weight: 800; letter-spacing: -0.3px; margin: 0; }
+.topbar h1 { font-size: 28px; line-height: 56px; font-weight: 800; letter-spacing: -0.6px; margin: 0; }
 main { padding: 16px; max-width: 640px; margin: 0 auto; }
-h2 { font-size: 18px; margin: 20px 0 10px; padding-left: 10px; border-left: 4px solid var(--accent); line-height: 1.2; }
+h2 { font-size: 18px; font-weight: 800; margin: 20px 0 10px; padding-left: 10px; border-left: 4px solid var(--accent); line-height: 1.2; }
 h3 { font-size: 16px; margin: 0 0 6px; }
 p { margin: 6px 0; }
 .muted { color: var(--muted); font-size: 14px; }
@@ -48,7 +53,7 @@ p { margin: 6px 0; }
 .grow { flex: 1; min-width: 0; }
 .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .stat { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; text-align: center; }
-.stat b { display: block; font-size: 24px; }
+.stat b { display: block; font-size: 24px; font-weight: 800; }
 .stat span { font-size: 12px; color: var(--muted); }
 
 button, .btn {
