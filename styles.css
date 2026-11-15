@@ -225,3 +225,4 @@ label.btn { font-size: 15px; color: var(--text); text-align: center; display: fl
 .banner { border-color: var(--accent); }
 .pick.is-next { border-color: var(--accent); }
 button:disabled { opacity: .35; }
+.warn { color: #ff8a80; }

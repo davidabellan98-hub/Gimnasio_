@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = 39; // igual que VERSION en sw.js
+const APP_VERSION = 40; // igual que VERSION en sw.js
 
 /* ============ Estado y almacenamiento ============ */
 const KEY = 'gymlog.v1';
@@ -191,7 +191,57 @@ function restAlerts(now = new Date()) {
   else if (!today && nx && isLeg(nx.name) && y1) out.push(`Te toca ${nx.name} y ayer entrenaste: si la haces hoy, mañana descansa.`);
   return out;
 }
-// Incumplimientos de esas dos reglas dentro de un ciclo (para el informe)
+/* ---- Descanso por grupo muscular: 48 h entre el final de un entreno y el siguiente del mismo grupo ---- */
+const GROUPS = { empuje: 'Empuje', tiron: 'Tirón', pierna: 'Pierna' };
+const REST_H = 48;
+// Grupos que se deducen del nombre de la sesión (se pueden cambiar en Editar sesión)
+function guessGroups(name) {
+  const n = (name || '').toLowerCase();
+  if (/full|cuerpo (entero|completo)/.test(n)) return ['empuje', 'tiron', 'pierna'];
+  const g = new Set();
+  if (/torso|upper|superior/.test(n)) { g.add('empuje'); g.add('tiron'); }
+  if (/empuje|push|pecho/.test(n)) g.add('empuje');
+  if (/tir[oó]n|tirones|pull|espalda/.test(n)) g.add('tiron');
+  if (/pierna|leg|inferior/.test(n)) g.add('pierna');
+  return [...g];
+}
+function routineGroups(r) { return r && Array.isArray(r.groups) ? r.groups : guessGroups(r && r.name); }
+function sessionGroups(s) { const i = routineIndexOf(s); return i >= 0 ? routineGroups(S.routines[i]) : guessGroups(s.routineName); }
+const sessEnd = (s) => new Date(new Date(s.date).getTime() + (s.duration || 60) * 60000);
+// Grupos de la sesión r que aún no han descansado 48 h, con la hora a la que estarán listos
+function restPending(r, now = new Date()) {
+  const out = [];
+  for (const g of routineGroups(r)) {
+    let last = null;
+    for (const s of S.sessions) if (sessionGroups(s).includes(g)) { const e = sessEnd(s); if (!last || e > last) last = e; }
+    if (!last) continue;
+    const until = new Date(last.getTime() + REST_H * 3600e3);
+    if (until > now) out.push({ g, until, hours: Math.max(0, Math.floor((now - last) / 3600e3)) });
+  }
+  return out;
+}
+function whenText(d) {
+  const k = daysBetween(new Date(), d), t = hhmm(d);
+  return k <= 0 ? `hoy a las ${t}` : k === 1 ? `mañana a las ${t}` : `el ${fmtDate(d, { weekday: 'long' })} a las ${t}`;
+}
+// Aviso para la sesión que toca si algún grupo no ha descansado, y sugerencia de la siguiente sesión descansada
+function groupRestHtml(r) {
+  if (!r) return '';
+  const pend = restPending(r);
+  if (!pend.length) return '';
+  let html = pend.map((p) => `<p class="alert">⚠︎ ${GROUPS[p.g]} lleva ${p.hours} h de descanso y necesita 48 h: listo ${whenText(p.until)}.</p>`).join('');
+  // No sugerir otra sesión si hoy ya entrenaste o si otra regla dice que hoy toca descanso
+  const trainedToday = S.sessions.some((s) => ymd(s.date) === ymd(new Date()));
+  if (trainedToday || restAlerts().some((t) => /hoy toca descanso/.test(t))) return html;
+  const i = S.routines.indexOf(r);
+  const alt = S.routines.map((_, k) => S.routines[(i + 1 + k) % S.routines.length])
+    .find((x) => x !== r && routineGroups(x).length && !restPending(x).length);
+  html += alt
+    ? `<p class="small" style="margin:6px 0">Puedes hacer <b>${esc(alt.name)}</b>: sus grupos ya han descansado.</p><button class="primary block" data-act="startRoutine" data-id="${alt.id}">Empezar ${esc(alt.name)}</button>`
+    : '<p class="small" style="margin:6px 0">Ninguna sesión tiene todos sus grupos descansados: hoy toca descanso.</p>';
+  return html;
+}
+// Incumplimientos de las reglas de descanso dentro de un ciclo (para el informe)
 function restViolations(c) {
   const T = [...new Set(S.sessions.map((s) => ymd(s.date)))].sort();
   const inCycle = new Set(c.sessions.map((s) => ymd(s.date)));
@@ -202,6 +252,13 @@ function restViolations(c) {
     if (run.length && ymd(addDays(run[run.length - 1] + 'T12:00', 1)) === k) run.push(k); else { flush(); run = [k]; }
   }
   flush();
+  for (const s of c.sessions) for (const g of sessionGroups(s)) {
+    const st = new Date(s.date);
+    const prev = S.sessions.filter((x) => x !== s && new Date(x.date) < st && sessionGroups(x).includes(g)).sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+    if (!prev) continue;
+    const gap = (st - sessEnd(prev)) / 3600e3;
+    if (gap < REST_H) out.push(`${GROUPS[g]} sin 48 h de descanso: ${prev.routineName || 'entreno'} (${fmtDate(prev.date, { weekday: 'short', day: 'numeric', month: 'short' })} ${hhmm(prev.date)}) → ${s.routineName || 'entreno'} (${fmtDate(st, { weekday: 'short', day: 'numeric', month: 'short' })} ${hhmm(st)}), ${Math.round(gap)} h`);
+  }
   const set = new Set(T);
   for (const s of c.sessions) {
     if (!isLeg(s.routineName)) continue;
@@ -340,6 +397,7 @@ function parsePlan(text) {
   const out = list.map((s) => ({
     name: str(s.nombre ?? s.name),
     notes: str(s.notas ?? s.notes ?? s.objetivo),
+    groups: Array.isArray(s.grupos ?? s.groups) ? (s.grupos ?? s.groups).map((g) => String(g).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/^tirones$/, 'tiron')).filter((g) => GROUPS[g]) : undefined,
     exercises: (s.ejercicios || s.exercises || []).map((e) => ({
       name: str(e.nombre ?? e.name ?? e.ejercicio),
       sets: str(e.series ?? e.sets) || '3',
@@ -357,7 +415,7 @@ function applyPlan(plan) {
   const key = (n) => n.trim().toLowerCase();
   for (const s of plan) {
     const i = S.routines.findIndex((r) => key(r.name) === key(s.name));
-    if (i >= 0) S.routines[i] = { ...S.routines[i], name: s.name, notes: s.notes || S.routines[i].notes || '', exercises: s.exercises };
+    if (i >= 0) S.routines[i] = { ...S.routines[i], name: s.name, notes: s.notes || S.routines[i].notes || '', exercises: s.exercises, ...(s.groups ? { groups: s.groups } : {}) };
     else S.routines.push({ id: uid(), ...s });
   }
   save();
@@ -496,7 +554,8 @@ function viewHome() {
           <div class="next-name">${esc(nx.name)}</div>
           ${after && after !== nx ? `<p class="muted small">Después: ${esc(after.name)}</p>` : ''}
           ${alertsHtml()}
-          <button class="primary block" style="margin-top:10px" data-act="startRoutine" data-id="${nx.id}">Empezar ${esc(nx.name)}</button>
+          ${groupRestHtml(nx)}
+          <button class="${restPending(nx).length ? '' : 'primary '}block" style="margin-top:10px" data-act="startRoutine" data-id="${nx.id}">Empezar ${esc(nx.name)}</button>
           <button class="block" style="margin-top:8px" data-act="go" data-tab="train">Otra sesión</button>
           <button class="block" style="margin-top:8px" data-act="pastPick">Registrar entrenamiento</button>
         </div>`
@@ -585,7 +644,8 @@ function viewRoutineEdit() {
     <input data-rbind="rname" value="${esc(r.name)}" placeholder="Ej.: Torso A">
     <label>Objetivo / notas de la sesión</label>
     <input data-rbind="rnotes" value="${esc(r.notes || '')}" placeholder="Ej.: hipertrofia, 4 días/semana">
-    <h2>Ejercicios</h2>
+    <label>Grupos musculares (para las 48 h de descanso)</label>
+    <div class="segs">${Object.entries(GROUPS).map(([k, l]) => `<button class="seg ${routineGroups(r).includes(k) ? 'on' : ''}" data-act="rgroup" data-g="${k}">${l}</button>`).join('')}</div>
     ${exs || '<p class="muted">Añade el primer ejercicio.</p>'}
     <button class="block" data-act="rexAdd">+ Añadir ejercicio</button>
     <div class="row" style="margin-top:16px">
@@ -610,10 +670,11 @@ function viewTrain() {
   }
   if (!S.active) {
     const nx = nextRoutine();
-    const opts = S.routines.map((r) => `<button class="block pick ${r === nx ? 'is-next' : ''}" style="margin-bottom:8px;text-align:left" data-act="startRoutine" data-id="${r.id}"><b>${esc(r.name)}</b>${r === nx ? ' <span class="pill ok">Te toca</span>' : ''}<br><span class="muted small">${r.exercises.length} ${r.exercises.length === 1 ? "ejercicio" : "ejercicios"}</span></button>`).join('');
+    const opts = S.routines.map((r) => `<button class="block pick ${r === nx ? 'is-next' : ''}" style="margin-bottom:8px;text-align:left" data-act="startRoutine" data-id="${r.id}"><b>${esc(r.name)}</b>${r === nx ? ' <span class="pill ok">Te toca</span>' : ''}<br><span class="muted small">${r.exercises.length} ${r.exercises.length === 1 ? "ejercicio" : "ejercicios"}${restPending(r).map((p) => ` · <span class="warn">${GROUPS[p.g]} listo ${whenText(p.until)}</span>`).join('')}</span></button>`).join('');
     return `
       <h2>¿Qué toca hoy?</h2>
       ${alertsHtml()}
+      ${groupRestHtml(nx)}
       ${opts || '<p class="muted">No tienes sesiones aún. Puedes crear una en "Sesiones" o hacer un entrenamiento libre.</p>'}
       <button class="primary block" data-act="startFree">Entrenamiento libre</button>
       <h2>¿Ya has entrenado?</h2>
@@ -838,7 +899,7 @@ function buildReport(c) {
   L.push(`- Este ciclo: **${cycleScore(c)}** ${c.complete ? '✅ completo' : c.closed ? '❌ incompleto' : '(aún abierto)'}`);
   L.push(`- Racha: ${plural(cycleStreak(cs), 'ciclo completo seguido', 'ciclos completos seguidos')}`);
   L.push(`- Últimos ${last8.length} ciclos (el último es este): ${last8.map((x) => `C${x.n} ${x.count}/${N} (${x.span} d)`).join(' · ')}`);
-  L.push(`- Descanso: ${viol.length ? '⚠️ ' + viol.join('; ') : 'sin avisos (nunca más de 3 días seguidos y Pierna con descanso antes o después)'}`);
+  L.push(`- Descanso: ${viol.length ? '⚠️ ' + viol.join('; ') : 'sin avisos (máximo 3 días seguidos, Pierna con descanso antes o después y 48 h de descanso por grupo muscular)'}`);
   L.push('');
   L.push('## Resumen de carga');
   L.push(`- Entrenos: ${list.length} · Tiempo total: ${fmtDur(mins)}`);
@@ -976,6 +1037,11 @@ const actions = {
   go: (el) => go(el.dataset.tab),
   newRoutine: () => { routineDraft = { id: uid(), name: '', notes: '', exercises: [{ name: '', sets: 3, reps: '8-10', weight: '', rest: 90, notes: '' }] }; go('routineEdit'); },
   editRoutine: (el) => { routineDraft = JSON.parse(JSON.stringify(S.routines.find((r) => r.id === el.dataset.id))); go('routineEdit'); },
+  rgroup: (el) => {
+    const g = new Set(routineGroups(routineDraft));
+    if (g.has(el.dataset.g)) g.delete(el.dataset.g); else g.add(el.dataset.g);
+    routineDraft.groups = Object.keys(GROUPS).filter((k) => g.has(k)); render();
+  },
   rexAdd: () => { routineDraft.exercises.push({ name: '', sets: 3, reps: '8-10', weight: '', rest: 90, notes: '' }); render(); },
   rexDel: (el) => { routineDraft.exercises.splice(+el.dataset.i, 1); render(); },
   rexMove: (el) => {
