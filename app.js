@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = 44; // igual que VERSION en sw.js
+const APP_VERSION = 45; // igual que VERSION en sw.js
 
 /* ============ Estado y almacenamiento ============ */
 const KEY = 'gymlog.v1';
@@ -699,11 +699,6 @@ function viewHome() {
           <button class="block" style="margin-top:8px" data-act="go" data-tab="train">Otra sesión</button>
         </div>`
       : `${alertsHtml()}<button class="primary block" data-act="go" data-tab="train">Empezar entrenamiento</button>`}
-    ${S.active ? '' : `<div class="card">
-      <h3>¿Ya has entrenado?</h3>
-      <p class="muted small">Apunta un entreno que ya terminaste, con su día y sus horas.</p>
-      <button class="block" style="margin-top:10px" data-act="pastPick">Registrar entrenamiento</button>
-    </div>`}
     ${cycleCard}
     <div class="stats">
       <div class="stat"><b>${streak}</b><span>${streak === 1 ? 'ciclo completo seguido' : 'ciclos completos seguidos'}</span></div>
@@ -715,7 +710,12 @@ function viewHome() {
     ${last8.length ? `<h2>Sesiones por ciclo</h2>
     <div class="card"><div class="weeks">${bars}</div></div>` : ''}
     ${last ? `<h2>Último entreno</h2><div class="card"><b>${esc(last.routineName || 'Entrenamiento libre')}</b>
-      <p class="muted">${fmtDate(last.date, { weekday: 'long', day: 'numeric', month: 'long' })} · ${fmtDur(last.duration)} · ${sessSets(last)} series</p></div>` : ''}
+      <p class="muted">${fmtDate(last.date, { weekday: 'long', day: 'numeric', month: 'long' })} · ${fmtDur(last.duration)} · ${plural(sessSets(last), "serie", "series")}</p></div>` : ''}
+    ${S.active ? '' : `<h2>¿Ya has entrenado?</h2>
+    <div class="card">
+      <p class="muted small" style="margin-top:0">Apunta un entreno que ya terminaste, con su día y sus horas.</p>
+      <button class="block" style="margin-top:10px" data-act="pastPick">Registrar entrenamiento</button>
+    </div>`}
   `;
 }
 
@@ -902,7 +902,7 @@ function viewHistory() {
       <details class="card">
         <summary>
           <div class="row between"><b>${esc(s.routineName || 'Entrenamiento libre')}</b><span class="muted small">${fmtDate(s.date)}</span></div>
-          <p class="muted small">${fmtDur(s.duration)} · ${sessSets(s)} series · ${fmtN(sessVolume(s))} kg volumen${s.energy ? ' · energía ' + s.energy + '/5' : ''}</p>
+          <p class="muted small">${fmtDur(s.duration)} · ${plural(sessSets(s), "serie", "series")} · ${fmtN(sessVolume(s))} kg volumen${s.energy ? ' · energía ' + s.energy + '/5' : ''}</p>
         </summary>
         <div class="session-sets">
           ${s.exercises.map((ex) => `<div><b>${esc(ex.name)}</b>: ${esc(setsText(ex))}</div>`).join('')}
