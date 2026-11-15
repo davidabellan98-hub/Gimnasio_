@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = 43; // igual que VERSION en sw.js
+const APP_VERSION = 44; // igual que VERSION en sw.js
 
 /* ============ Estado y almacenamiento ============ */
 const KEY = 'gymlog.v1';
@@ -697,10 +697,13 @@ function viewHome() {
           ${groupRestHtml(nx)}
           <button class="${restPending(nx).length ? '' : 'primary '}block" style="margin-top:10px" data-act="startRoutine" data-id="${nx.id}">Empezar ${esc(nx.name)}</button>
           <button class="block" style="margin-top:8px" data-act="go" data-tab="train">Otra sesión</button>
-          <button class="block" style="margin-top:8px" data-act="pastPick">Registrar entrenamiento</button>
         </div>`
-      : `${alertsHtml()}<button class="primary block" data-act="go" data-tab="train">Empezar entrenamiento</button>
-         <button class="block" style="margin-top:8px" data-act="pastPick">Registrar entrenamiento</button>`}
+      : `${alertsHtml()}<button class="primary block" data-act="go" data-tab="train">Empezar entrenamiento</button>`}
+    ${S.active ? '' : `<div class="card">
+      <h3>¿Ya has entrenado?</h3>
+      <p class="muted small">Apunta un entreno que ya terminaste, con su día y sus horas.</p>
+      <button class="block" style="margin-top:10px" data-act="pastPick">Registrar entrenamiento</button>
+    </div>`}
     ${cycleCard}
     <div class="stats">
       <div class="stat"><b>${streak}</b><span>${streak === 1 ? 'ciclo completo seguido' : 'ciclos completos seguidos'}</span></div>
