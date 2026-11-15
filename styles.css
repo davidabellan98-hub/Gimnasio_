@@ -226,3 +226,5 @@ label.btn { font-size: 15px; color: var(--text); text-align: center; display: fl
 .pick.is-next { border-color: var(--accent); }
 button:disabled { opacity: .35; }
 .warn { color: #ff8a80; }
+.share-preview { margin: 14px 0; border-radius: 18px; overflow: hidden; border: 1px solid var(--line); background: #050505; aspect-ratio: 1080 / 1350; }
+.share-preview img { width: 100%; height: 100%; display: block; }

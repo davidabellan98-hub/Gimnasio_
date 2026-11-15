@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = 40; // igual que VERSION en sw.js
+const APP_VERSION = 41; // igual que VERSION en sw.js
 
 /* ============ Estado y almacenamiento ============ */
 const KEY = 'gymlog.v1';
@@ -421,6 +421,143 @@ function applyPlan(plan) {
   save();
 }
 
+
+/* ============ Resumen semanal en imagen (para compartir con amigos) ============ */
+let repMode = 'coach';                    // 'coach' (informe del entrenador) o 'social' (imagen para amigos)
+let shareWeek = weekStart(new Date());
+// Datos de la semana: entrenos, totales y récords (mejor 1RM estimado o reps que nunca antes)
+function weekSummary(ws) {
+  const we = addDays(ws, 7);
+  const list = S.sessions.filter((s) => { const d = new Date(s.date); return d >= ws && d < we; }).sort((a, b) => new Date(a.date) - new Date(b.date));
+  const best = new Map();
+  for (const s of list) for (const ex of s.exercises) {
+    const k = ex.name.trim().toLowerCase(), b = bestSet(ex);
+    if (!b) continue;
+    const reps = Math.max(...ex.sets.map((st) => num(st.r)));
+    const cur = best.get(k);
+    if (!cur || b.v > cur.v || (!b.v && reps > cur.reps)) best.set(k, { name: ex.name.trim(), v: b.v, w: b.w, r: b.r, reps });
+  }
+  const prs = [], tops = [];
+  for (const [k, x] of best) {
+    let pv = 0, preps = 0, seen = false;
+    for (const s of S.sessions) {
+      if (new Date(s.date) >= ws) continue;
+      for (const ex of s.exercises) if (ex.name.trim().toLowerCase() === k && ex.sets.length) {
+        seen = true; const b = bestSet(ex);
+        pv = Math.max(pv, b ? b.v : 0); preps = Math.max(preps, ...ex.sets.map((st) => num(st.r)));
+      }
+    }
+    const gain = x.v ? (pv ? (x.v - pv) / pv * 100 : 0) : (preps ? (x.reps - preps) / preps * 100 : 0);
+    const item = { ...x, gain };
+    if (seen && ((x.v && x.v > pv) || (!x.v && x.reps > preps))) prs.push(item);
+    tops.push(item);
+  }
+  prs.sort((a, b) => b.gain - a.gain); tops.sort((a, b) => b.v - a.v || b.reps - a.reps);
+  return {
+    list, ws, prs: prs.slice(0, 3), tops: tops.slice(0, 3),
+    mins: list.reduce((a, s) => a + (s.duration || 0), 0),
+    vol: list.reduce((a, s) => a + sessVolume(s), 0),
+    sets: list.reduce((a, s) => a + sessSets(s), 0),
+  };
+}
+let logoImg = null;
+function loadLogo() {
+  if (logoImg) return Promise.resolve(logoImg);
+  return new Promise((res) => { const im = new Image(); im.onload = () => { logoImg = im; res(im); }; im.onerror = () => res(null); im.src = 'icons/icon-192.png'; });
+}
+// Dibuja la imagen (1080×1350, formato vertical de redes) y devuelve un PNG
+async function drawShareCard(ws) {
+  const W = 1080, H = 1350, F = 'Archivo, -apple-system, system-ui, sans-serif';
+  const C = { bg: '#0a0a0a', card: '#161616', line: '#2a2a2a', red: '#e10600', text: '#f5f5f5', muted: '#9a9a9a', dim: '#262626' };
+  try { await Promise.all(['400 30px Archivo', '600 30px Archivo', '800 30px Archivo'].map((f) => document.fonts.load(f))); } catch (e) { /* se usa la letra del sistema */ }
+  const logo = await loadLogo();
+  const sm = weekSummary(ws);
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const x = cv.getContext('2d');
+  const rr = (X, Y, w, h, r) => { x.beginPath(); x.moveTo(X + r, Y); x.arcTo(X + w, Y, X + w, Y + h, r); x.arcTo(X + w, Y + h, X, Y + h, r); x.arcTo(X, Y + h, X, Y, r); x.arcTo(X, Y, X + w, Y, r); x.closePath(); };
+  const txt = (t, X, Y, size, weight = 400, color = C.text, align = 'left') => { x.font = `${weight} ${size}px ${F}`; x.fillStyle = color; x.textAlign = align; x.fillText(t, X, Y); };
+  const fit = (t, maxW, size, weight) => { x.font = `${weight} ${size}px ${F}`; if (x.measureText(t).width <= maxW) return t; while (t.length > 1 && x.measureText(t + '…').width > maxW) t = t.slice(0, -1); return t + '…'; };
+  // fondo
+  const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#141414'); g.addColorStop(1, '#050505');
+  x.fillStyle = g; x.fillRect(0, 0, W, H);
+  // cabecera: logo, nombre y racha
+  if (logo) { x.save(); rr(64, 64, 104, 104, 24); x.clip(); x.drawImage(logo, 64, 64, 104, 104); x.restore(); }
+  txt('GymLog', 196, 116, 50, 800);
+  txt('Mi semana de entreno', 196, 158, 30, 400, C.muted);
+  const streak = ymd(ws) === ymd(weekStart(new Date())) ? cycleStreak() : 0;   // la racha solo tiene sentido en la semana actual
+  if (streak) {
+    const label = `${streak} ${streak === 1 ? 'ciclo completo' : 'ciclos seguidos'}`;
+    x.font = `700 28px ${F}`; const tw = x.measureText(label).width + 48;
+    rr(W - 64 - tw, 88, tw, 56, 28); x.fillStyle = C.red; x.fill();
+    txt(label, W - 64 - tw / 2, 126, 28, 700, '#fff', 'center');
+  }
+  // semana
+  txt(`Semana ${isoWeek(ws)}`, 64, 288, 92, 800);
+  txt(`${fmtDate(ws, { day: 'numeric', month: 'short' })} – ${fmtDate(addDays(ws, 6), { day: 'numeric', month: 'short', year: 'numeric' })}`, 64, 344, 36, 400, C.muted);
+  // días de la semana
+  rr(64, 392, W - 128, 220, 32); x.fillStyle = C.card; x.fill(); x.strokeStyle = C.line; x.lineWidth = 2; x.stroke();
+  const colW = (W - 128) / 7, today = ymd(new Date());
+  ['L', 'M', 'X', 'J', 'V', 'S', 'D'].forEach((l, i) => {
+    const d = addDays(ws, i), k = ymd(d), cx = 64 + colW * i + colW / 2;
+    const ses = sm.list.filter((s) => ymd(s.date) === k);
+    txt(l, cx, 444, 28, 600, C.muted, 'center');
+    x.beginPath(); x.arc(cx, 506, 40, 0, Math.PI * 2); x.fillStyle = ses.length ? C.red : C.dim; x.fill();
+    if (k === today) { x.lineWidth = 4; x.strokeStyle = '#fff'; x.stroke(); }
+    txt(String(d.getDate()), cx, 516, 30, 800, ses.length ? '#fff' : C.muted, 'center');
+    if (ses.length) txt(fit(ses.map((s) => s.routineName || 'Libre').join(' + '), colW - 10, 22, 600), cx, 582, 22, 600, C.text, 'center');
+  });
+  // cifras
+  const stats = [
+    [String(sm.list.length), sm.list.length === 1 ? 'entreno' : 'entrenos'],
+    [sm.mins >= 60 ? `${Math.floor(sm.mins / 60)} h ${sm.mins % 60} min` : `${sm.mins} min`, 'entrenando'],
+    [sm.vol >= 1000 ? `${fmtN(sm.vol / 1000)} t` : `${fmtN(sm.vol)} kg`, 'levantados'],
+    [String(sm.sets), 'series'],
+  ];
+  stats.forEach(([v, l], i) => {
+    const cw = (W - 128 - 24) / 2, X = 64 + (i % 2) * (cw + 24), Y = 644 + Math.floor(i / 2) * 194;
+    rr(X, Y, cw, 170, 28); x.fillStyle = C.card; x.fill(); x.strokeStyle = C.line; x.lineWidth = 2; x.stroke();
+    txt(v, X + 36, Y + 96, 72, 800, i === 2 ? C.red : C.text);
+    txt(l, X + 36, Y + 142, 30, 400, C.muted);
+  });
+  // récords (o mejores series si no hubo récords)
+  const items = sm.prs.length ? sm.prs : sm.tops;
+  x.fillStyle = C.red; x.fillRect(64, 1040, 8, 44);
+  txt(!items.length ? 'Semana de descanso' : sm.prs.length ? 'Récords de la semana' : 'Mejores series', 92, 1076, 40, 800);
+  if (!items.length) txt('A por la siguiente.', 64, 1140, 32, 400, C.muted);
+  items.forEach((it, i) => {
+    const Y = 1140 + i * 58;
+    const val = it.v ? `${it.w ? fmtN(it.w) + ' kg × ' : ''}${it.r}` : `${it.reps} reps`;
+    const extra = sm.prs.length && it.gain > 0 ? `  +${fmtN(it.gain)}%` : '';
+    x.font = `700 32px ${F}`; const vw = x.measureText(val + extra).width;
+    txt(fit(it.name, W - 128 - vw - 30, 32, 600), 64, Y, 32, 600);
+    txt(val, W - 64 - (extra ? x.measureText(extra).width : 0), Y, 32, 700, C.text, 'right');
+    if (extra) txt(extra, W - 64, Y, 32, 700, C.red, 'right');
+  });
+  txt('Hecho con GymLog', W / 2, H - 34, 26, 600, '#5a5a5a', 'center');
+  return new Promise((res) => cv.toBlob((b) => res(b), 'image/png'));
+}
+function viewShareCard() {
+  const we = addDays(shareWeek, 6);
+  return `
+    <div class="row between">
+      <button class="sm" data-act="shareWeek" data-d="-1">◀</button>
+      <div style="text-align:center"><b>Semana ${isoWeek(shareWeek)}</b><br><span class="muted small">${fmtDate(shareWeek, { day: 'numeric', month: 'short' })} – ${fmtDate(we, { day: 'numeric', month: 'short', year: 'numeric' })}</span></div>
+      <button class="sm" data-act="shareWeek" data-d="1" ${addDays(shareWeek, 7) > new Date() ? 'disabled' : ''}>▶</button>
+    </div>
+    <div class="share-preview"><img id="sharePreview" alt="Resumen semanal"></div>
+    <button class="primary block" data-act="shareCard">Compartir / Guardar imagen</button>
+    <p class="muted small" style="margin-top:8px">Desde el menú de compartir puedes mandarla por WhatsApp, subirla a Instagram o pulsar «Guardar imagen» para tenerla en Fotos.</p>
+  `;
+}
+let shareBlob = null;
+async function refreshShareCard() {
+  const img = $('#sharePreview'); if (!img) return;
+  const wk = shareWeek; shareBlob = await drawShareCard(wk);
+  if (wk !== shareWeek || !$('#sharePreview')) return;
+  if (img.dataset.url) URL.revokeObjectURL(img.dataset.url);
+  img.dataset.url = URL.createObjectURL(shareBlob); img.src = img.dataset.url;
+}
+
 /* ============ Navegación ============ */
 let tab = S.active ? 'train' : 'home';
 let routineDraft = null;
@@ -447,7 +584,7 @@ function fitTitle() {
   while (h.scrollWidth > h.clientWidth + 1 && size > 20) { size -= 1; h.style.fontSize = size + 'px'; }
 }
 function render() {
-  $('#title').textContent = tab === 'train' && S.active && S.active.past ? (S.active.editingId ? 'Editar entreno' : 'Registro entrenamiento') : (TITLES[tab] || 'GymLog');
+  $('#title').textContent = tab === 'train' && S.active && S.active.past ? (S.active.editingId ? 'Editar entreno' : 'Registro entrenamiento') : tab === 'report' && repMode === 'social' ? 'Resumen semanal' : (TITLES[tab] || 'GymLog');
   fitTitle();
   document.querySelectorAll('.tabbar button').forEach((b) => {
     b.classList.toggle('active', b.dataset.tab === tab || ((tab === 'routineEdit' || tab === 'routineImport') && b.dataset.tab === 'routines'));
@@ -458,7 +595,8 @@ function render() {
   $('#exnames').innerHTML = allExerciseNames().map((n) => `<option value="${esc(n)}">`).join('');
   const v = { home: viewHome, routines: viewRoutines, routineEdit: viewRoutineEdit, routineImport: viewRoutineImport, train: viewTrain, history: viewHistory, progress: viewProgress, report: viewReport, settings: viewSettings }[tab];
   $('#view').innerHTML = v();
-  if (tab === 'report') { const c = reportCycle(); if (c) $('#reportText').textContent = buildReport(c); }
+  if (tab === 'report' && repMode === 'social') refreshShareCard();
+  else if (tab === 'report') { const c = reportCycle(); if (c) $('#reportText').textContent = buildReport(c); }
 }
 
 /* ============ Vistas ============ */
@@ -829,10 +967,15 @@ function reportCycle(cs = computeCycles()) {
   return cs.find((c) => c.key === reportKey) || pendingReport(cs) || cs[cs.length - 1];
 }
 function viewReport() {
+  const modes = `<div class="segs" style="margin-top:0">
+      <button class="seg ${repMode === 'coach' ? 'on' : ''}" data-act="repMode" data-m="coach">Entrenador</button>
+      <button class="seg ${repMode === 'social' ? 'on' : ''}" data-act="repMode" data-m="social">Amigos</button>
+    </div>`;
+  if (repMode === 'social') return modes + viewShareCard();
   const cs = computeCycles(); const c = reportCycle(cs);
-  if (!c) return '<div class="empty">Cuando registres entrenos, aquí tendrás el informe de cada ciclo para tu entrenador.</div>';
+  if (!c) return modes + '<div class="empty">Cuando registres entrenos, aquí tendrás el informe de cada ciclo para tu entrenador.</div>';
   const i = cs.indexOf(c);
-  return `
+  return `${modes}
     <div class="row between">
       <button class="sm" data-act="repCycle" data-d="-1" ${i === 0 ? 'disabled' : ''}>◀</button>
       <div style="text-align:center"><b>Ciclo ${c.n}</b> <span class="pill ${c.complete ? 'ok' : ''}">${c.count}/${cycleSize()}</span><br>
@@ -867,7 +1010,9 @@ function viewSettings() {
       <label class="btn block" style="margin-top:8px">Importar copia<input type="file" accept=".json,application/json" id="importFile" hidden></label>
     </div>
     <h2>Instalar en el iPhone</h2>
-    <div class="card"><p class="small">Abre esta página en <b>Safari</b> → botón <b>Compartir</b> → <b>Añadir a pantalla de inicio</b>. Se abrirá como una app y funciona sin conexión.</p></div>
+    <div class="card"><p class="small">Abre esta página en <b>Safari</b> → botón <b>Compartir</b> → <b>Añadir a pantalla de inicio</b>. Se abrirá como una app y funciona sin conexión.</p>
+      <button class="block" style="margin-top:10px" data-act="shareLink">Compartir enlace de la app</button>
+      <p class="muted small" style="margin-top:8px;text-align:center;word-break:break-all">${esc(appUrl())}</p></div>
     <button class="danger block" style="margin-top:20px" data-act="wipe">Borrar todos los datos</button>
     <p class="muted small" style="text-align:center;margin-top:16px">GymLog · versión ${APP_VERSION}<br>Pantalla ${Math.min(screen.width, screen.height)} pt · vista ${innerWidth} px${window.__zoomFix > 1.05 ? ' · zoom compensado ×' + fmtN(window.__zoomFix) : ''}</p>
   `;
@@ -1128,6 +1273,23 @@ const actions = {
   },
   progMetric: (el) => { progMetric = el.dataset.m; render(); },
   progPick: (el) => { progEx = el.dataset.name; progMetric = null; go('progress'); },
+  repMode: (el) => { repMode = el.dataset.m; render(); },
+  shareWeek: (el) => { const n = addDays(shareWeek, 7 * +el.dataset.d); if (n <= new Date()) { shareWeek = n; render(); } },
+  shareCard: async () => {
+    if (!shareBlob) await refreshShareCard();
+    const name = `gymlog-semana-${isoWeek(shareWeek)}.png`;
+    const file = new File([shareBlob], name, { type: 'image/png' });
+    try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file] }); return; } }
+    catch (e) { if (e.name === 'AbortError') return; }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(shareBlob); a.download = name; document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  },
+  shareLink: async () => {
+    const url = appUrl();
+    try { if (navigator.share) { await navigator.share({ title: 'GymLog', text: 'Mi app para apuntar los entrenos del gimnasio. Ábrela en Safari y pulsa Compartir → Añadir a pantalla de inicio:', url }); return; } }
+    catch (e) { if (e.name === 'AbortError') return; }
+    try { await navigator.clipboard.writeText(url); toast('Enlace copiado'); } catch (e) { toast(url); }
+  },
   repCycle: (el) => {
     const cs = computeCycles(); const i = cs.indexOf(reportCycle(cs)) + +el.dataset.d;
     if (cs[i]) { reportKey = cs[i].key; render(); }
@@ -1169,6 +1331,8 @@ const actions = {
 
 // Marca el informe de un ciclo cerrado como pasado al entrenador (quita el aviso de Actividad)
 function markSent(c) { if (c.closed) { S.reportSent = S.reportSent || {}; S.reportSent[c.key] = true; save(); } }
+// Dirección pública de la app (sin «index.html»)
+function appUrl() { return location.origin + location.pathname.replace(/index\.html$/, ''); }
 function download(name, text, type) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([text], { type }));
