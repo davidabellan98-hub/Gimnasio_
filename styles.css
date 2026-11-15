@@ -218,3 +218,10 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 
 /* Botones hechos con <label> (elegir archivo): mismo aspecto que el resto de botones */
 label.btn { font-size: 15px; color: var(--text); text-align: center; display: flex; align-items: center; justify-content: center; }
+/* Ciclos: «te toca», avisos de descanso y aviso de informe */
+.next { border-left: 3px solid var(--accent); }
+.next-name { font-size: 26px; font-weight: 800; letter-spacing: -0.4px; margin: 2px 0; }
+.alert { border: 1px solid #5a1210; background: #1d0b0a; color: #ffb4ab; border-radius: 10px; padding: 8px 10px; font-size: 14px; margin: 8px 0; }
+.banner { border-color: var(--accent); }
+.pick.is-next { border-color: var(--accent); }
+button:disabled { opacity: .35; }

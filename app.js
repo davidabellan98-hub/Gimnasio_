@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = 37; // igual que VERSION en sw.js
+const APP_VERSION = 38; // igual que VERSION en sw.js
 
 /* ============ Estado y almacenamiento ============ */
 const KEY = 'gymlog.v1';
@@ -12,7 +12,7 @@ const COMMON_EXERCISES = [
 ];
 
 function blankState() {
-  return { version: 1, settings: { weeklyGoal: 3 }, routines: [], sessions: [], active: null, reportNotes: {} };
+  return { version: 1, settings: { cycleSize: 0, cycleDays: 7 }, routines: [], sessions: [], active: null, reportNotes: {}, reportSent: {} };
 }
 function load() {
   try {
@@ -109,15 +109,105 @@ function lastPerformance(name, beforeDate, excludeId) {
   }
   return null;
 }
-function streakWeeks() {
-  const goal = S.settings.weeklyGoal || 1;
-  let ws = weekStart(new Date());
-  let count = 0;
-  // la semana actual cuenta si ya se cumplió; si no, no rompe la racha
-  if (daysTrained(sessionsInWeek(ws)) >= goal) count++;
-  ws = addDays(ws, -7);
-  while (daysTrained(sessionsInWeek(ws)) >= goal) { count++; ws = addDays(ws, -7); }
-  return count;
+/* ============ Ciclos ============
+   Un ciclo es una vuelta a la rotación de sesiones. Empieza con el primer entreno y se cierra al llegar
+   a N entrenos, al hacer la última sesión de la rotación o al pasar D días desde el primero.
+   Es completo si llega a N entrenos dentro de esos D días. */
+const DAY = 864e5;
+const dayStart = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+const daysBetween = (a, b) => Math.round((dayStart(b) - dayStart(a)) / DAY);
+const isLeg = (name) => /pierna|leg/i.test(name || '');
+const plural = (n, a, b) => `${n} ${n === 1 ? a : b}`;
+function cycleSize() { return S.settings.cycleSize || S.routines.length || 5; }
+function cycleDays() { return S.settings.cycleDays || 7; }
+// Posición en la rotación (orden de la pestaña Sesiones) de la sesión de un entreno, o -1 si es libre
+function routineIndexOf(s) {
+  let i = S.routines.findIndex((r) => r.id === s.routineId);
+  if (i < 0 && s.routineName) i = S.routines.findIndex((r) => r.name.trim().toLowerCase() === s.routineName.trim().toLowerCase());
+  return i;
+}
+function computeCycles(now = new Date()) {
+  const N = cycleSize(), D = cycleDays(), lastIdx = S.routines.length - 1;
+  const asc = [...S.sessions].sort((a, b) => new Date(a.date) - new Date(b.date));
+  const out = []; let cur = null;
+  const close = (c, why) => { c.closed = true; c.why = why; };
+  for (const s of asc) {
+    const d = new Date(s.date);
+    if (cur && !cur.closed && d >= cur.limit) close(cur, 'tiempo');
+    if (!cur || cur.closed) {
+      const start = dayStart(d);
+      cur = { n: out.length + 1, key: s.id, start, limit: addDays(start, D), sessions: [], missedBefore: 0 };
+      if (out.length) cur.missedBefore = Math.max(0, Math.floor((start - out[out.length - 1].limit) / (D * DAY)));
+      out.push(cur);
+    }
+    cur.sessions.push(s);
+    if (cur.sessions.length >= N) close(cur, 'completo');
+    else if (lastIdx > 0 && routineIndexOf(s) === lastIdx) close(cur, 'rotacion');
+  }
+  if (cur && !cur.closed && now >= cur.limit) close(cur, 'tiempo');
+  for (const c of out) {
+    c.count = c.sessions.length; c.complete = c.count >= N;
+    c.end = new Date(c.sessions[c.sessions.length - 1].date);
+    c.span = c.why === 'tiempo' ? D : daysBetween(c.start, c.end) + 1; // si se agotó el plazo, cuenta el ciclo entero
+    c.dayNow = Math.min(D, daysBetween(c.start, now) + 1);
+  }
+  return out;
+}
+// Ciclos completos seguidos. El ciclo en curso no la rompe; un ciclo incompleto o un ciclo entero sin entrenar, sí.
+function cycleStreak(cs = computeCycles()) {
+  if (!cs.length) return 0;
+  const last = cs[cs.length - 1];
+  if (last.closed && Date.now() >= last.limit.getTime() + cycleDays() * DAY) return 0;
+  let n = 0;
+  for (let i = cs.length - 1; i >= 0; i--) {
+    const c = cs[i];
+    if (!c.closed) continue;
+    if (!c.complete) break;
+    n++;
+    if (c.missedBefore > 0) break;
+  }
+  return n;
+}
+const cycleRange = (c, year = false) => `${fmtDate(c.start, { day: 'numeric', month: 'short' })} – ${fmtDate(c.closed ? c.end : new Date(), { day: 'numeric', month: 'short', ...(year ? { year: 'numeric' } : {}) })}`;
+const cycleScore = (c) => `${c.count}/${cycleSize()} en ${plural(c.span, 'día', 'días')}`;
+// La sesión que toca: la siguiente en la rotación a la última registrada (si fallas un día, el orden se corre)
+function nextRoutine() {
+  if (!S.routines.length) return null;
+  const last = sorted().find((s) => routineIndexOf(s) >= 0);
+  return last ? S.routines[(routineIndexOf(last) + 1) % S.routines.length] : S.routines[0];
+}
+// Avisos de descanso para hoy: no más de 3 días seguidos y Pierna con descanso antes o después
+function restAlerts(now = new Date()) {
+  const T = new Set(S.sessions.map((s) => ymd(s.date)));
+  const has = (k) => T.has(ymd(addDays(now, k)));
+  const legOn = (k) => S.sessions.some((s) => ymd(s.date) === ymd(addDays(now, k)) && isLeg(s.routineName));
+  const today = has(0), y1 = has(-1), y2 = has(-2), nx = nextRoutine();
+  const out = [];
+  if (today && y1 && y2) out.push('Llevas 3 días seguidos entrenando: mañana toca descanso.');
+  else if (!today && y1 && y2) out.push('Llevas 2 días seguidos: hoy sería el tercero. Mejor descansa hoy.');
+  if (legOn(0) && y1) out.push('Hoy hiciste Pierna sin descanso antes: mañana descansa.');
+  else if (!today && legOn(-1) && y2) out.push('Ayer hiciste Pierna sin descanso antes: hoy toca descanso.');
+  else if (!today && nx && isLeg(nx.name) && y1) out.push(`Te toca ${nx.name} y ayer entrenaste: si la haces hoy, mañana descansa.`);
+  return out;
+}
+// Incumplimientos de esas dos reglas dentro de un ciclo (para el informe)
+function restViolations(c) {
+  const T = [...new Set(S.sessions.map((s) => ymd(s.date)))].sort();
+  const inCycle = new Set(c.sessions.map((s) => ymd(s.date)));
+  const out = [];
+  let run = [];
+  const flush = () => { if (run.length >= 3 && run.some((k) => inCycle.has(k))) out.push(`${run.length} días seguidos entrenando (${fmtDate(run[0] + 'T12:00', { day: 'numeric', month: 'short' })} – ${fmtDate(run[run.length - 1] + 'T12:00', { day: 'numeric', month: 'short' })})`); };
+  for (const k of T) {
+    if (run.length && ymd(addDays(run[run.length - 1] + 'T12:00', 1)) === k) run.push(k); else { flush(); run = [k]; }
+  }
+  flush();
+  const set = new Set(T);
+  for (const s of c.sessions) {
+    if (!isLeg(s.routineName)) continue;
+    const d = s.date;
+    if (set.has(ymd(addDays(d, -1))) && set.has(ymd(addDays(d, 1)))) out.push(`${s.routineName} el ${fmtDate(d, { weekday: 'long', day: 'numeric', month: 'short' })} sin descanso ni antes ni después`);
+  }
+  return out;
 }
 function allExerciseNames() {
   const set = new Set(COMMON_EXERCISES);
@@ -275,7 +365,7 @@ function applyPlan(plan) {
 /* ============ Navegación ============ */
 let tab = S.active ? 'train' : 'home';
 let routineDraft = null;
-let reportWeek = weekStart(new Date());
+let reportKey = null; // ciclo que se ve en Informe (null = el que toca)
 let progEx = null;
 let progMetric = null;
 
@@ -289,7 +379,7 @@ function go(t) {
   tab = t; render(); window.scrollTo(0, 0);
 }
 
-const TITLES = { home: 'Actividad', routines: 'Sesiones', routineEdit: 'Editar sesión', routineImport: 'Importar sesiones', train: 'Entrenar', history: 'Historial', progress: 'Progreso', report: 'Informe semanal', settings: 'Ajustes' };
+const TITLES = { home: 'Actividad', routines: 'Sesiones', routineEdit: 'Editar sesión', routineImport: 'Importar sesiones', train: 'Entrenar', history: 'Historial', progress: 'Progreso', report: 'Informe del ciclo', settings: 'Ajustes' };
 
 // Los títulos largos se encogen (hasta 20 px) para caber en una línea junto al botón de ajustes
 function fitTitle() {
@@ -309,18 +399,50 @@ function render() {
   $('#exnames').innerHTML = allExerciseNames().map((n) => `<option value="${esc(n)}">`).join('');
   const v = { home: viewHome, routines: viewRoutines, routineEdit: viewRoutineEdit, routineImport: viewRoutineImport, train: viewTrain, history: viewHistory, progress: viewProgress, report: viewReport, settings: viewSettings }[tab];
   $('#view').innerHTML = v();
-  if (tab === 'report') $('#reportText').textContent = buildReport(reportWeek);
+  if (tab === 'report') { const c = reportCycle(); if (c) $('#reportText').textContent = buildReport(c); }
 }
 
 /* ============ Vistas ============ */
+// Ciclo cerrado cuyo informe aún no se ha compartido (solo el último)
+function pendingReport(cs = computeCycles()) {
+  const c = [...cs].reverse().find((x) => x.closed);
+  return c && !(S.reportSent || {})[c.key] && c === cs.filter((x) => x.closed).pop() ? c : null;
+}
+function alertsHtml() {
+  const al = restAlerts();
+  return al.map((t) => `<p class="alert">⚠︎ ${esc(t)}</p>`).join('');
+}
 function viewHome() {
-  const goal = S.settings.weeklyGoal;
+  const N = cycleSize(), D = cycleDays();
+  const cs = computeCycles();
+  const cur = cs.length && !cs[cs.length - 1].closed ? cs[cs.length - 1] : null;
+  const lastC = cs.filter((c) => c.closed).pop();
   const ws = weekStart(new Date());
-  const thisWeek = daysTrained(sessionsInWeek(ws));
-  const pct = Math.min(100, Math.round((thisWeek / goal) * 100));
   const monthKey = ymd(new Date()).slice(0, 7);
   const monthDays = new Set(S.sessions.filter((s) => ymd(s.date).startsWith(monthKey)).map((s) => ymd(s.date))).size;
+  const streak = cycleStreak(cs);
+  const nx = nextRoutine();
+  const after = nx ? S.routines[(S.routines.indexOf(nx) + 1) % S.routines.length] : null;
+  const pend = pendingReport(cs);
 
+  // Tarjeta del ciclo actual
+  let cycleCard;
+  if (cur) {
+    const pct = Math.min(100, Math.round((cur.count / N) * 100)), rem = D - cur.dayNow + 1, left = N - cur.count;
+    cycleCard = `<div class="card">
+      <div class="row between"><h3>Ciclo ${cur.n}</h3><span class="pill">${cur.count}/${N} sesiones</span></div>
+      <div class="bar"><i style="width:${pct}%"></i></div>
+      <p class="muted">Día ${cur.dayNow} de ${D} · ${left === 1 ? 'Te falta 1 sesión' : `Te faltan ${left} sesiones`} y ${rem === 1 ? 'queda 1 día' : `quedan ${rem} días`} (contando hoy).</p>
+    </div>`;
+  } else if (lastC) {
+    cycleCard = `<div class="card">
+      <div class="row between"><h3>Ciclo ${lastC.n} cerrado</h3><span class="pill ${lastC.complete ? 'ok' : ''}">${lastC.count}/${N}</span></div>
+      <div class="bar ${lastC.complete ? 'done' : ''}"><i style="width:${Math.min(100, Math.round((lastC.count / N) * 100))}%"></i></div>
+      <p class="muted">${lastC.complete ? `Completo: ${cycleScore(lastC)} 💪` : `Incompleto: ${cycleScore(lastC)}.`} El ciclo ${lastC.n + 1} empieza con tu próximo entreno.</p>
+    </div>`;
+  } else {
+    cycleCard = `<div class="card"><h3>Tu primer ciclo</h3><p class="muted">Empieza con tu primer entreno: ${N} sesiones en un máximo de ${D} días.</p></div>`;
+  }
   // Heatmap 16 semanas: fila de meses arriba, días de la semana a la izquierda.
   // Es una ventana móvil: siempre muestra las 16 últimas semanas hasta la actual.
   const trainedDays = {};
@@ -357,41 +479,52 @@ function viewHome() {
     }
   });
 
-  // Barras 8 semanas
-  const weeks = [];
-  for (let i = 7; i >= 0; i--) { const w = addDays(ws, -7 * i); weeks.push({ w, n: daysTrained(sessionsInWeek(w)) }); }
-  const maxN = Math.max(goal, ...weeks.map((x) => x.n), 1);
-  const bars = weeks.map((x) => `<div class="w ${x.n >= goal ? 'met' : ''}"><span>${x.n}</span><div class="col"><s style="bottom:${(goal / maxN) * 100}%"></s><b style="height:${(x.n / maxN) * 100}%"></b></div><span>${fmtDate(x.w, { day: 'numeric', month: 'numeric' })}</span></div>`).join('');
+  // Sesiones de los últimos 8 ciclos (la línea es el objetivo de sesiones por ciclo)
+  const last8 = cs.slice(-8);
+  const maxN = Math.max(N, ...last8.map((c) => c.count), 1);
+  const bars = last8.map((c) => `<div class="w ${c.complete ? 'met' : ''}"><span>${c.count}</span><div class="col"><s style="bottom:${(N / maxN) * 100}%"></s><b style="height:${(c.count / maxN) * 100}%"></b></div><span>C${c.n}</span></div>`).join('');
 
   const last = sorted()[0];
   return `
-    <div class="card">
-      <div class="row between"><h3>Esta semana</h3><span class="pill ${thisWeek >= goal ? 'ok' : ''}">${thisWeek}/${goal} días</span></div>
-      <div class="bar ${thisWeek >= goal ? 'done' : ''}"><i style="width:${pct}%"></i></div>
-      <p class="muted">${thisWeek >= goal ? '¡Objetivo semanal cumplido! 💪' : (goal - thisWeek === 1 ? 'Te falta 1 día para tu objetivo.' : `Te faltan ${goal - thisWeek} días para tu objetivo.`)}</p>
-    </div>
+    ${pend ? `<div class="card banner"><b>✅ Ciclo ${pend.n} cerrado · ${cycleScore(pend)}</b>
+      <p class="muted small">Genera el informe y pásaselo a tu entrenador.</p>
+      <button class="primary block" style="margin-top:8px" data-act="openReport" data-key="${pend.key}">Ver informe del ciclo ${pend.n}</button></div>` : ''}
+    ${S.active ? `<button class="primary block" data-act="go" data-tab="train">Continuar entreno en curso</button>`
+      : nx ? `<div class="card next">
+          <span class="muted small">Te toca</span>
+          <div class="next-name">${esc(nx.name)}</div>
+          ${after && after !== nx ? `<p class="muted small">Después: ${esc(after.name)}</p>` : ''}
+          ${alertsHtml()}
+          <button class="primary block" style="margin-top:10px" data-act="startRoutine" data-id="${nx.id}">Empezar ${esc(nx.name)}</button>
+          <button class="block" style="margin-top:8px" data-act="go" data-tab="train">Otra sesión</button>
+          <button class="block" style="margin-top:8px" data-act="pastPick">Registrar entrenamiento</button>
+        </div>`
+      : `${alertsHtml()}<button class="primary block" data-act="go" data-tab="train">Empezar entrenamiento</button>
+         <button class="block" style="margin-top:8px" data-act="pastPick">Registrar entrenamiento</button>`}
+    ${cycleCard}
     <div class="stats">
-      <div class="stat"><b>${streakWeeks()}</b><span>${streakWeeks() === 1 ? 'semana cumpliendo' : 'semanas seguidas cumpliendo'}</span></div>
+      <div class="stat"><b>${streak}</b><span>${streak === 1 ? 'ciclo completo seguido' : 'ciclos completos seguidos'}</span></div>
       <div class="stat"><b>${monthDays}</b><span>${monthDays === 1 ? 'día' : 'días'} este mes</span></div>
       <div class="stat"><b>${S.sessions.length}</b><span>${S.sessions.length === 1 ? 'entreno' : 'entrenos'} en total</span></div>
     </div>
-    ${S.active ? `<button class="primary block" style="margin-top:12px" data-act="go" data-tab="train">Continuar entreno en curso</button>`
-      : `<button class="primary block" style="margin-top:12px" data-act="go" data-tab="train">Empezar entrenamiento</button>
-         <button class="block" style="margin-top:8px" data-act="pastPick">Registrar entrenamiento</button>`}
     <h2>Constancia</h2>
     <div class="card"><div class="heat">${grid}</div></div>
-    <h2>Días por semana</h2>
-    <div class="card"><div class="weeks">${bars}</div>
-      </div>
+    ${last8.length ? `<h2>Sesiones por ciclo</h2>
+    <div class="card"><div class="weeks">${bars}</div></div>` : ''}
     ${last ? `<h2>Último entreno</h2><div class="card"><b>${esc(last.routineName || 'Entrenamiento libre')}</b>
       <p class="muted">${fmtDate(last.date, { weekday: 'long', day: 'numeric', month: 'long' })} · ${fmtDur(last.duration)} · ${sessSets(last)} series</p></div>` : ''}
   `;
 }
 
 function viewRoutines() {
-  const list = S.routines.map((r) => `
+  const nx = nextRoutine();
+  const list = S.routines.map((r, i) => `
     <div class="card">
-      <div class="row between"><h3>${esc(r.name)}</h3><span class="muted small">${r.exercises.length} ${r.exercises.length === 1 ? "ejercicio" : "ejercicios"}</span></div>
+      <div class="row between"><h3><span class="num-red">${i + 1}.</span> ${esc(r.name)} ${r === nx ? '<span class="pill ok">Te toca</span>' : ''}</h3>
+        <div class="row">
+          <button class="sm" data-act="routineMove" data-id="${r.id}" data-d="-1" aria-label="Subir">↑</button>
+          <button class="sm" data-act="routineMove" data-id="${r.id}" data-d="1" aria-label="Bajar">↓</button>
+        </div></div>
       <p class="muted small">${esc(r.exercises.map((e) => e.name).join(' · ') || 'Sin ejercicios')}</p>
       <div class="row" style="margin-top:8px">
         <button class="primary grow" data-act="startRoutine" data-id="${r.id}">Empezar</button>
@@ -399,7 +532,7 @@ function viewRoutines() {
       </div>
     </div>`).join('');
   return `
-    ${list || '<div class="empty">Aún no tienes sesiones.<br>Crea una (p. ej. "Torso", "Pierna", "Full body").</div>'}
+    ${list ? `<p class="muted small" style="margin:0 0 10px">El orden es el de tu rotación: un ciclo es una vuelta completa (${cycleSize()} sesiones en ${cycleDays()} días como máximo).</p>${list}` : '<div class="empty">Aún no tienes sesiones.<br>Crea una (p. ej. "Torso", "Pierna", "Full body").</div>'}
     <button class="primary block" data-act="newRoutine">+ Nueva sesión</button>
     <button class="block" style="margin-top:10px" data-act="go" data-tab="routineImport">Importar del entrenador</button>
   `;
@@ -475,9 +608,11 @@ function viewTrain() {
     `;
   }
   if (!S.active) {
-    const opts = S.routines.map((r) => `<button class="block pick" style="margin-bottom:8px;text-align:left" data-act="startRoutine" data-id="${r.id}"><b>${esc(r.name)}</b><br><span class="muted small">${r.exercises.length} ${r.exercises.length === 1 ? "ejercicio" : "ejercicios"}</span></button>`).join('');
+    const nx = nextRoutine();
+    const opts = S.routines.map((r) => `<button class="block pick ${r === nx ? 'is-next' : ''}" style="margin-bottom:8px;text-align:left" data-act="startRoutine" data-id="${r.id}"><b>${esc(r.name)}</b>${r === nx ? ' <span class="pill ok">Te toca</span>' : ''}<br><span class="muted small">${r.exercises.length} ${r.exercises.length === 1 ? "ejercicio" : "ejercicios"}</span></button>`).join('');
     return `
       <h2>¿Qué toca hoy?</h2>
+      ${alertsHtml()}
       ${opts || '<p class="muted">No tienes sesiones aún. Puedes crear una en "Sesiones" o hacer un entrenamiento libre.</p>'}
       <button class="primary block" data-act="startFree">Entrenamiento libre</button>
       <h2>¿Ya has entrenado?</h2>
@@ -547,13 +682,15 @@ function viewTrain() {
 function viewHistory() {
   const list = sorted();
   if (!list.length) return '<div class="empty">Todavía no hay entrenos guardados.</div>';
-  let html = ''; let curWeek = '';
+  const cs = computeCycles(); const byId = new Map();
+  cs.forEach((c) => c.sessions.forEach((s) => byId.set(s.id, c)));
+  let html = ''; let curC = null;
   for (const s of list) {
-    const wk = ymd(weekStart(s.date));
-    if (wk !== curWeek) {
-      curWeek = wk;
-      const n = daysTrained(sessionsInWeek(weekStart(s.date)));
-      html += `<h2>Semana del ${fmtDate(wk, { day: 'numeric', month: 'long' })} <span class="pill ${n >= S.settings.weeklyGoal ? 'ok' : ''}">${n} días</span></h2>`;
+    const c = byId.get(s.id);
+    if (c !== curC) {
+      curC = c;
+      html += `<h2>Ciclo ${c.n} <span class="pill ${c.complete ? 'ok' : ''}">${c.count}/${cycleSize()}</span></h2>
+        <p class="muted small" style="margin:-4px 0 10px">${cycleRange(c)}${c.closed ? ` · ${plural(c.span, 'día', 'días')}` : ' · en curso'}</p>`;
     }
     html += `
       <details class="card">
@@ -574,7 +711,6 @@ function viewHistory() {
   return html;
 }
 
-
 function viewProgress() {
   const list = trackedExercises();
   if (!list.length) return '<div class="empty">Aquí verás tu evolución cuando guardes tus primeros entrenos.</div>';
@@ -590,13 +726,9 @@ function viewProgress() {
   const metricBtns = Object.entries(METRICS).filter(([k]) => hasWeight || k === 'maxR')
     .map(([k, m]) => `<button class="seg ${k === progMetric ? 'on' : ''}" data-act="progMetric" data-m="${k}">${m.label}</button>`).join('');
 
-  // Volumen y series por semana (12 semanas)
-  const ws = weekStart(new Date());
-  const weeks = [];
-  for (let i = 11; i >= 0; i--) {
-    const w = addDays(ws, -7 * i); const l = sessionsInWeek(w);
-    weeks.push({ label: fmtDate(w, { day: 'numeric', month: 'numeric' }), v: l.reduce((a, s) => a + sessVolume(s), 0), sets: l.reduce((a, s) => a + sessSets(s), 0), hi: i === 0 });
-  }
+  // Volumen y series por ciclo (últimos 12)
+  const cs = computeCycles();
+  const weeks = cs.slice(-12).map((c, i, arr) => ({ label: 'C' + c.n, v: c.sessions.reduce((a, s) => a + sessVolume(s), 0), sets: c.sessions.reduce((a, s) => a + sessSets(s), 0), hi: i === arr.length - 1 }));
 
   // Récords personales
   const prs = list.map((e) => {
@@ -618,9 +750,9 @@ function viewProgress() {
         <div class="stat"><b>${fmtN(best.y)}</b><span>récord · ${fmtDate(best.x, { day: 'numeric', month: 'short' })}</span></div>
       </div>
     </div>
-    <h2>Volumen semanal (kg × reps)</h2>
-    <div class="card">${barChart(weeks, 'kg')}<p class="muted small">Últimas 12 semanas. La barra resaltada es la semana actual.</p></div>
-    <h2>Series por semana</h2>
+    <h2>Volumen por ciclo (kg × reps)</h2>
+    <div class="card">${barChart(weeks, 'kg')}<p class="muted small">Últimos 12 ciclos. La barra resaltada es el último.</p></div>
+    <h2>Series por ciclo</h2>
     <div class="card">${barChart(weeks.map((w) => ({ ...w, v: w.sets })), 'series')}</div>
     <h2>Récords personales</h2>
     <div class="card"><table class="tbl"><thead><tr><th>Ejercicio</th><th>Mejor serie</th><th>1RM est.</th></tr></thead><tbody>
@@ -629,17 +761,25 @@ function viewProgress() {
   `;
 }
 
+// Ciclo que se muestra en Informe: el elegido, o el último cerrado sin compartir, o el último
+function reportCycle(cs = computeCycles()) {
+  if (!cs.length) return null;
+  return cs.find((c) => c.key === reportKey) || pendingReport(cs) || cs[cs.length - 1];
+}
 function viewReport() {
-  const wk = ymd(reportWeek);
-  const end = addDays(reportWeek, 6);
+  const cs = computeCycles(); const c = reportCycle(cs);
+  if (!c) return '<div class="empty">Cuando registres entrenos, aquí tendrás el informe de cada ciclo para tu entrenador.</div>';
+  const i = cs.indexOf(c);
   return `
     <div class="row between">
-      <button class="sm" data-act="repWeek" data-d="-1">◀</button>
-      <b>${fmtDate(reportWeek, { day: 'numeric', month: 'short' })} – ${fmtDate(end, { day: 'numeric', month: 'short', year: 'numeric' })}</b>
-      <button class="sm" data-act="repWeek" data-d="1">▶</button>
+      <button class="sm" data-act="repCycle" data-d="-1" ${i === 0 ? 'disabled' : ''}>◀</button>
+      <div style="text-align:center"><b>Ciclo ${c.n}</b> <span class="pill ${c.complete ? 'ok' : ''}">${c.count}/${cycleSize()}</span><br>
+        <span class="muted small">${cycleRange(c, true)} · ${c.closed ? plural(c.span, 'día', 'días') : `en curso, día ${c.dayNow} de ${cycleDays()}`}</span></div>
+      <button class="sm" data-act="repCycle" data-d="1" ${i === cs.length - 1 ? 'disabled' : ''}>▶</button>
     </div>
+    ${c.closed ? '' : '<p class="alert" style="margin-top:12px">Este ciclo aún no ha terminado. Lo ideal es pasar el informe cuando se cierre.</p>'}
     <label>Comentarios para el entrenador (se incluyen en el informe)</label>
-    <textarea data-repnotes="${wk}" placeholder="Ej.: quiero centrarme en espalda; me molesta la rodilla; esta semana dormí poco…">${esc(S.reportNotes[wk] || '')}</textarea>
+    <textarea data-repnotes="${c.key}" placeholder="Ej.: quiero centrarme en espalda; me molesta la rodilla; este ciclo dormí poco…">${esc(S.reportNotes[c.key] || '')}</textarea>
     <div class="row wrap" style="margin:12px 0">
       <button class="primary grow" data-act="repShare">Compartir / Guardar</button>
       <button class="grow" data-act="repCopy">Copiar texto</button>
@@ -652,8 +792,11 @@ function viewReport() {
 function viewSettings() {
   return `
     <div class="card">
-      <label>Objetivo de días por semana</label>
-      <select data-setting="weeklyGoal">${[1, 2, 3, 4, 5, 6, 7].map((n) => `<option ${S.settings.weeklyGoal === n ? 'selected' : ''}>${n}</option>`).join('')}</select>
+      <label>Sesiones por ciclo</label>
+      <select data-setting="cycleSize"><option value="0" ${!S.settings.cycleSize ? 'selected' : ''}>Automático: una por sesión (${S.routines.length || 5})</option>${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => `<option value="${n}" ${S.settings.cycleSize === n ? 'selected' : ''}>${n}</option>`).join('')}</select>
+      <label>Días máximos por ciclo</label>
+      <select data-setting="cycleDays">${[5, 6, 7, 8, 9, 10, 14].map((n) => `<option value="${n}" ${cycleDays() === n ? 'selected' : ''}>${n} días</option>`).join('')}</select>
+      <p class="muted small" style="margin-top:8px">Un ciclo empieza con tu primer entreno y se cierra al hacer todas las sesiones, al terminar la última de la rotación o al pasar estos días. El orden de la rotación es el de la pestaña Sesiones.</p>
     </div>
     <h2>Copia de seguridad</h2>
     <div class="card">
@@ -668,46 +811,45 @@ function viewSettings() {
   `;
 }
 
-/* ============ Informe semanal (Markdown) ============ */
-function buildReport(ws) {
-  const goal = S.settings.weeklyGoal;
-  const we = addDays(ws, 6);
-  const list = sessionsInWeek(ws);
-  const prev = sessionsInWeek(addDays(ws, -7));
-  const days = daysTrained(list);
-  const vol = list.reduce((a, s) => a + sessVolume(s), 0);
-  const pvol = prev.reduce((a, s) => a + sessVolume(s), 0);
-  const sets = list.reduce((a, s) => a + sessSets(s), 0);
+/* ============ Informe del ciclo (Markdown) ============ */
+function buildReport(c) {
+  const cs = computeCycles(); const idx = cs.findIndex((x) => x.key === c.key); c = cs[idx];
+  const N = cycleSize(), D = cycleDays();
+  const list = c.sessions, prevC = cs[idx - 1];
+  const prev = prevC ? prevC.sessions : [];
+  const vol = list.reduce((a, s) => a + sessVolume(s), 0), pvol = prev.reduce((a, s) => a + sessVolume(s), 0);
+  const sets = list.reduce((a, s) => a + sessSets(s), 0), psets = prev.reduce((a, s) => a + sessSets(s), 0);
   const mins = list.reduce((a, s) => a + (s.duration || 0), 0);
   const energies = list.filter((s) => s.energy).map((s) => +s.energy);
-  const diff = (a, b) => (b ? ` (${a >= b ? '+' : ''}${Math.round(((a - b) / b) * 100)}% vs semana anterior)` : '');
-
-  const hist = [];
-  for (let i = 7; i >= 0; i--) hist.push(daysTrained(sessionsInWeek(addDays(ws, -7 * i))));
+  const diff = (a, b) => (b ? ` (${a >= b ? '+' : ''}${Math.round(((a - b) / b) * 100)}% vs ciclo anterior)` : '');
+  const last8 = cs.slice(Math.max(0, idx - 7), idx + 1);
+  const dshort = (d) => fmtDate(d, { day: 'numeric', month: 'short' });
+  const viol = restViolations(c);
 
   const L = [];
-  L.push('# Informe semanal de entrenamiento');
+  L.push('# Informe de ciclo de entrenamiento');
   L.push('');
-  L.push(`**Semana:** ${fmtDate(ws, { weekday: 'long', day: 'numeric', month: 'long' })} – ${fmtDate(we, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`);
+  L.push(`**Ciclo ${c.n}:** ${cycleScore(c)} ${c.complete ? '✅' : c.closed ? '❌' : '(en curso)'} — ${fmtDate(c.start, { weekday: 'long', day: 'numeric', month: 'long' })} a ${fmtDate(c.closed ? c.end : new Date(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`);
+  if (S.routines.length) L.push(`**Rotación:** ${S.routines.map((r) => r.name).join(' → ')} · un ciclo = ${N} sesiones en ${D} días como máximo`);
   L.push(`**Generado:** ${fmtDate(new Date(), { day: 'numeric', month: 'long', year: 'numeric' })} con GymLog`);
   L.push('');
   L.push('## Constancia');
-  L.push(`- Días entrenados: **${days} de ${goal}** objetivo ${days >= goal ? '✅' : '❌'}`);
-  L.push(`- Racha actual: ${streakWeeks()} semana(s) seguidas cumpliendo el objetivo`);
-  L.push(`- Días por semana (últimas 8 semanas, la última es esta): ${hist.join(' · ')}`);
+  L.push(`- Este ciclo: **${cycleScore(c)}** ${c.complete ? '✅ completo' : c.closed ? '❌ incompleto' : '(aún abierto)'}`);
+  L.push(`- Racha: ${plural(cycleStreak(cs), 'ciclo completo seguido', 'ciclos completos seguidos')}`);
+  L.push(`- Últimos ${last8.length} ciclos (el último es este): ${last8.map((x) => `C${x.n} ${x.count}/${N} (${x.span} d)`).join(' · ')}`);
+  L.push(`- Descanso: ${viol.length ? '⚠️ ' + viol.join('; ') : 'sin avisos (nunca 3 días seguidos y Pierna con descanso antes o después)'}`);
   L.push('');
   L.push('## Resumen de carga');
   L.push(`- Entrenos: ${list.length} · Tiempo total: ${fmtDur(mins)}`);
-  L.push(`- Series totales: ${sets}${diff(sets, prev.reduce((a, s) => a + sessSets(s), 0))}`);
+  L.push(`- Series totales: ${sets}${diff(sets, psets)}`);
   L.push(`- Volumen total (kg × reps): ${fmtN(vol)} kg${diff(vol, pvol)}`);
   if (energies.length) L.push(`- Energía media: ${fmtN(energies.reduce((a, b) => a + b, 0) / energies.length)}/5`);
   L.push('');
 
-  L.push('## Entrenos de la semana');
-  if (!list.length) L.push('_No hubo entrenos esta semana._');
-  for (const s of list) {
+  L.push('## Entrenos del ciclo');
+  list.forEach((s, k) => {
     const d = new Date(s.date);
-    L.push(`### ${DAYS[(d.getDay() + 6) % 7]} ${d.getDate()} — ${s.routineName || 'Entrenamiento libre'}`);
+    L.push(`### ${k + 1}. ${DAYS[(d.getDay() + 6) % 7]} ${dshort(d)} — ${s.routineName || 'Entrenamiento libre'}`);
     L.push(`Duración: ${fmtDur(s.duration)}${s.energy ? ` · Energía: ${s.energy}/5` : ''} · Volumen: ${fmtN(sessVolume(s))} kg`);
     L.push('');
     L.push('| Ejercicio | Series (kg×reps) | Mejor serie | e1RM est. |');
@@ -718,80 +860,68 @@ function buildReport(ws) {
     }
     if (s.notes) { L.push(''); L.push(`> Notas: ${s.notes.replace(/\n+/g, ' ')}`); }
     L.push('');
-  }
+  });
 
-  // Progresión por ejercicio
+  // Progresión por ejercicio frente a la última vez antes de este ciclo
   const byName = new Map();
   for (const s of list) for (const ex of s.exercises) {
-    const k = ex.name.trim().toLowerCase();
-    const b = bestSet(ex);
+    const k = ex.name.trim().toLowerCase(); const b = bestSet(ex);
     if (!b) continue;
     const cur = byName.get(k);
     if (!cur || b.v > cur.best.v) byName.set(k, { name: ex.name, best: b });
   }
+  const f = (b) => (b ? (b.w ? fmtN(b.w) + '×' : '') + b.r : '-');
   if (byName.size) {
-    L.push('## Progresión por ejercicio (vs. la última vez antes de esta semana)');
-    L.push('| Ejercicio | Esta semana | Anterior | Cambio e1RM |');
+    L.push('## Progresión por ejercicio (vs. la última vez antes de este ciclo)');
+    L.push('| Ejercicio | Este ciclo | Anterior | Cambio e1RM |');
     L.push('|---|---|---|---|');
     for (const { name, best } of byName.values()) {
-      const p = lastPerformance(name, ws);
-      const pb = p ? bestSet(p.ex) : null;
+      const p = lastPerformance(name, c.start); const pb = p ? bestSet(p.ex) : null;
       let ch = 'primera vez';
-      if (pb && pb.v && best.v) {
-        const pct = ((best.v - pb.v) / pb.v) * 100;
-        ch = (pct > 1 ? '⬆️ +' : pct < -1 ? '⬇️ ' : '➡️ ') + fmtN(pct) + '%';
-      } else if (pb) ch = '—';
-      const f = (b) => (b ? (b.w ? fmtN(b.w) + '×' : '') + b.r : '-');
-      L.push(`| ${name} | ${f(best)} | ${pb ? f(pb) + ' (' + fmtDate(p.session.date, { day: 'numeric', month: 'short' }) + ')' : '-'} | ${ch} |`);
+      if (pb && pb.v && best.v) { const pct = ((best.v - pb.v) / pb.v) * 100; ch = (pct > 1 ? '⬆️ +' : pct < -1 ? '⬇️ ' : '➡️ ') + fmtN(pct) + '%'; }
+      else if (pb) ch = '—';
+      L.push(`| ${name} | ${f(best)} | ${pb ? f(pb) + ' (' + dshort(p.session.date) + ')' : '-'} | ${ch} |`);
     }
     L.push('');
-  }
 
-
-  // Evolución de las últimas 8 semanas (mejor 1RM estimado de cada semana)
-  if (byName.size) {
-    const wks = []; for (let i = 7; i >= 0; i--) wks.push(addDays(ws, -7 * i));
-    L.push('## Evolución últimas 8 semanas (mejor e1RM semanal, kg; "-" = no se hizo)');
-    L.push('| Ejercicio | ' + wks.map((w) => fmtDate(w, { day: 'numeric', month: 'numeric' })).join(' | ') + ' |');
-    L.push('|---|' + wks.map(() => '---').join('|') + '|');
+    // Evolución por ciclos: mejor 1RM estimado de cada ciclo (no se distorsiona por cómo caen las semanas)
+    L.push(`## Evolución últimos ${last8.length} ciclos (mejor e1RM por ciclo, kg; "-" = no se hizo)`);
+    L.push('| Ejercicio | ' + last8.map((x) => `C${x.n} (${fmtDate(x.start, { day: 'numeric', month: 'numeric' })})`).join(' | ') + ' |');
+    L.push('|---|' + last8.map(() => '---').join('|') + '|');
     for (const { name } of byName.values()) {
-      const sr = exerciseSeries(name);
-      const cells = wks.map((w) => {
-        const we2 = addDays(w, 7);
-        const inW = sr.filter((p) => p.date >= w && p.date < we2);
-        if (!inW.length) return '-';
-        const m = Math.max(...inW.map((p) => p.e1rm));
-        return m ? fmtN(m) : Math.max(...inW.map((p) => p.maxR)) + ' reps';
+      const key = name.trim().toLowerCase();
+      const cells = last8.map((x) => {
+        const exs = x.sessions.flatMap((s) => s.exercises.filter((e) => e.name.trim().toLowerCase() === key && e.sets.length));
+        if (!exs.length) return '-';
+        const b = bestSet({ sets: exs.flatMap((e) => e.sets) });
+        return b && b.v ? fmtN(b.v) : Math.max(...exs.flatMap((e) => e.sets.map((st) => num(st.r)))) + ' reps';
       });
       L.push(`| ${name} | ${cells.join(' | ')} |`);
     }
-    const vols = wks.map((w) => fmtN(sessionsInWeek(w).reduce((a, s) => a + sessVolume(s), 0)));
     L.push('');
-    L.push(`Volumen semanal (kg): ${vols.join(' · ')}`);
+    L.push(`Volumen por ciclo (kg): ${last8.map((x) => `C${x.n} ${fmtN(x.sessions.reduce((a, s) => a + sessVolume(s), 0))}`).join(' · ')}`);
+    L.push(`Series por ciclo: ${last8.map((x) => `C${x.n} ${x.sessions.reduce((a, s) => a + sessSets(s), 0)}`).join(' · ')}`);
     L.push('');
   }
 
-  // Sesiones planificadas
   if (S.routines.length) {
-    L.push('## Mis sesiones planificadas');
-    for (const r of S.routines) {
-      L.push(`**${r.name}**${r.notes ? ` — ${r.notes}` : ''}`);
-      for (const e of r.exercises) {
-        L.push(`- ${e.name}: ${e.sets || '?'}×${e.reps || '?'}${e.weight ? ' @ ' + e.weight + ' kg' : ''}${e.rest ? ' · descanso ' + e.rest + ' s' : ''}${e.notes ? ' · ' + e.notes : ''}`);
-      }
+    L.push('## Mis sesiones planificadas (en orden de rotación)');
+    S.routines.forEach((r, k) => {
+      L.push(`**${k + 1}. ${r.name}**${r.notes ? ` — ${r.notes}` : ''}`);
+      for (const e of r.exercises) L.push(`- ${e.name}: ${e.sets || '?'}×${e.reps || '?'}${num(e.weight) ? ' @ ' + fmtN(num(e.weight)) + ' kg' : ''}${e.rest ? ' · descanso ' + e.rest + ' s' : ''}${e.notes ? ' · ' + e.notes : ''}`);
       L.push('');
-    }
+    });
   }
 
-  const notes = S.reportNotes[ymd(ws)];
+  const notes = S.reportNotes[c.key];
   L.push('## Comentarios del atleta');
   L.push(notes ? notes : '_Sin comentarios._');
   L.push('');
   L.push('## Qué necesito del entrenador');
-  L.push('Analiza mi constancia, la progresión de cargas y el volumen por grupo muscular. Dime qué puedo mejorar, si algún ejercicio está estancado y debería cambiarlo o ajustarlo, y propón cambios concretos para la próxima semana.');
+  L.push('Analiza mi constancia por ciclos, la progresión de cargas y el volumen por grupo muscular. Dime qué puedo mejorar, si algún ejercicio está estancado y debería cambiarlo o ajustarlo, y propón cambios concretos para el próximo ciclo.');
   L.push('');
   L.push('## Plan para importar en GymLog');
-  L.push('Termina tu respuesta con las sesiones de la próxima semana en un único bloque de código JSON con este formato, para que pueda copiarlo e importarlo en la app. Usa los mismos nombres de sesión que ya tengo si solo cambian ejercicios o cargas (así se actualizan y conservan su historial). "reps" admite rangos ("8-10"), "kg" es el peso orientativo (vacío o 0 si es con peso corporal) y "descanso" va en segundos.');
+  L.push('Termina tu respuesta con las sesiones del próximo ciclo, en el orden de la rotación, en un único bloque de código JSON con este formato, para que pueda copiarlo e importarlo en la app. Usa los mismos nombres de sesión que ya tengo si solo cambian ejercicios o cargas (así se actualizan y conservan su historial). "reps" admite rangos ("8-10"), "kg" es el peso orientativo (vacío o 0 si es con peso corporal) y "descanso" va en segundos.');
   L.push('```json');
   L.push(JSON.stringify(PLAN_EXAMPLE, null, 2));
   L.push('```');
@@ -835,7 +965,9 @@ function finishWorkout() {
   S.sessions.push(session);
   S.active = null;
   save(); stopRest();
-  toast('Entreno guardado ✅');
+  const c = computeCycles().find((x) => x.sessions.some((s) => s.id === session.id));
+  if (c && c.closed && c.why !== 'tiempo' && c.sessions[c.sessions.length - 1].id === session.id) toast(`Ciclo ${c.n} cerrado: ${cycleScore(c)} ${c.complete ? '✅' : ''}`);
+  else toast('Entreno guardado ✅');
   go('home');
 }
 
@@ -929,19 +1061,30 @@ const actions = {
   },
   progMetric: (el) => { progMetric = el.dataset.m; render(); },
   progPick: (el) => { progEx = el.dataset.name; progMetric = null; go('progress'); },
-  repWeek: (el) => { reportWeek = addDays(reportWeek, 7 * +el.dataset.d); render(); },
+  repCycle: (el) => {
+    const cs = computeCycles(); const i = cs.indexOf(reportCycle(cs)) + +el.dataset.d;
+    if (cs[i]) { reportKey = cs[i].key; render(); }
+  },
+  openReport: (el) => { reportKey = el.dataset.key; go('report'); },
+  routineMove: (el) => {
+    const i = S.routines.findIndex((r) => r.id === el.dataset.id), j = i + +el.dataset.d;
+    if (i < 0 || j < 0 || j >= S.routines.length) return;
+    [S.routines[i], S.routines[j]] = [S.routines[j], S.routines[i]]; save(); render();
+  },
   repCopy: async () => {
-    const text = buildReport(reportWeek);
+    const c = reportCycle(); if (!c) return;
+    const text = buildReport(c); markSent(c);
     try { await navigator.clipboard.writeText(text); toast('Informe copiado'); }
     catch (e) { selectReport(); toast('Selecciona y copia el texto'); }
   },
   repShare: async () => {
-    const text = buildReport(reportWeek);
-    const name = `informe-gym-${ymd(reportWeek)}.md`;
+    const c = reportCycle(); if (!c) return;
+    const text = buildReport(c); markSent(c);
+    const name = `informe-gym-ciclo-${c.n}-${ymd(c.start)}.md`;
     const file = new File([text], name, { type: 'text/markdown' });
     try {
-      if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'Informe semanal' }); return; }
-      if (navigator.share) { await navigator.share({ title: 'Informe semanal', text }); return; }
+      if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: `Informe del ciclo ${c.n}` }); return; }
+      if (navigator.share) { await navigator.share({ title: `Informe del ciclo ${c.n}`, text }); return; }
     } catch (e) { if (e.name === 'AbortError') return; }
     download(name, text, 'text/markdown');
   },
@@ -957,6 +1100,8 @@ const actions = {
   restStop: () => stopRest()
 };
 
+// Marca el informe de un ciclo cerrado como pasado al entrenador (quita el aviso de Actividad)
+function markSent(c) { if (c.closed) { S.reportSent = S.reportSent || {}; S.reportSent[c.key] = true; save(); } }
 function download(name, text, type) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([text], { type }));
@@ -1023,7 +1168,7 @@ document.addEventListener('input', (e) => {
     save();
   } else if (t.dataset.repnotes !== undefined) {
     S.reportNotes[t.dataset.repnotes] = t.value; save();
-    $('#reportText').textContent = buildReport(reportWeek);
+    const c = reportCycle(); if (c) $('#reportText').textContent = buildReport(c);
   } else if (t.dataset.plan) {
     planText = t.value;
   } else if (t.dataset.prog === 'ex') {
