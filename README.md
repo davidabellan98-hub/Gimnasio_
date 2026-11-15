@@ -2,7 +2,7 @@
 
 App web instalable (PWA) para el iPhone que sirve para:
 
-- **Ciclos**: la constancia se mide por ciclos (una vuelta a tu rotación de sesiones en un máximo de 7 días, empiece cuando empiece), con racha de ciclos completos, «te toca» la siguiente sesión y avisos de descanso (3 días seguidos, Pierna sin descanso).
+- **Ciclos**: la constancia se mide por ciclos (una vuelta a tu rotación de sesiones en un máximo de 7 días, empiece cuando empiece), con racha de ciclos completos, «te toca» la siguiente sesión y avisos de descanso (más de 3 días seguidos, Pierna sin descanso).
 - **Sesiones**: crea sesiones (Torso, Pierna…) con ejercicios, series, repeticiones, peso, descanso y notas.
 - **Entrenar**: registra cada serie (kg y repeticiones). Muestra lo que hiciste la última vez, tiene un temporizador de descanso y un cronómetro de la sesión. Si la app se cierra a mitad de entreno, no se pierde nada.
 - **Progreso**: gráficas de evolución por ejercicio (1RM estimado, peso máximo, reps máximas o volumen), volumen y series por ciclo (últimos 12) y tabla de récords personales.

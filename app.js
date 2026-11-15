@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = 38; // igual que VERSION en sw.js
+const APP_VERSION = 39; // igual que VERSION en sw.js
 
 /* ============ Estado y almacenamiento ============ */
 const KEY = 'gymlog.v1';
@@ -176,15 +176,16 @@ function nextRoutine() {
   const last = sorted().find((s) => routineIndexOf(s) >= 0);
   return last ? S.routines[(routineIndexOf(last) + 1) % S.routines.length] : S.routines[0];
 }
-// Avisos de descanso para hoy: no más de 3 días seguidos y Pierna con descanso antes o después
+// Avisos de descanso para hoy: 3 días seguidos están bien, pero no un cuarto; y Pierna con descanso antes o después
 function restAlerts(now = new Date()) {
   const T = new Set(S.sessions.map((s) => ymd(s.date)));
   const has = (k) => T.has(ymd(addDays(now, k)));
   const legOn = (k) => S.sessions.some((s) => ymd(s.date) === ymd(addDays(now, k)) && isLeg(s.routineName));
-  const today = has(0), y1 = has(-1), y2 = has(-2), nx = nextRoutine();
+  const today = has(0), y1 = has(-1), y2 = has(-2), y3 = has(-3), nx = nextRoutine();
   const out = [];
-  if (today && y1 && y2) out.push('Llevas 3 días seguidos entrenando: mañana toca descanso.');
-  else if (!today && y1 && y2) out.push('Llevas 2 días seguidos: hoy sería el tercero. Mejor descansa hoy.');
+  if (today && y1 && y2 && y3) out.push('Hoy es tu 4.º día seguido: mañana descansa sin falta.');
+  else if (today && y1 && y2) out.push('Llevas 3 días seguidos entrenando: mañana toca descanso.');
+  else if (!today && y1 && y2 && y3) out.push('Llevas 3 días seguidos: hoy toca descanso.');
   if (legOn(0) && y1) out.push('Hoy hiciste Pierna sin descanso antes: mañana descansa.');
   else if (!today && legOn(-1) && y2) out.push('Ayer hiciste Pierna sin descanso antes: hoy toca descanso.');
   else if (!today && nx && isLeg(nx.name) && y1) out.push(`Te toca ${nx.name} y ayer entrenaste: si la haces hoy, mañana descansa.`);
@@ -196,7 +197,7 @@ function restViolations(c) {
   const inCycle = new Set(c.sessions.map((s) => ymd(s.date)));
   const out = [];
   let run = [];
-  const flush = () => { if (run.length >= 3 && run.some((k) => inCycle.has(k))) out.push(`${run.length} días seguidos entrenando (${fmtDate(run[0] + 'T12:00', { day: 'numeric', month: 'short' })} – ${fmtDate(run[run.length - 1] + 'T12:00', { day: 'numeric', month: 'short' })})`); };
+  const flush = () => { if (run.length >= 4 && run.some((k) => inCycle.has(k))) out.push(`${run.length} días seguidos entrenando (${fmtDate(run[0] + 'T12:00', { day: 'numeric', month: 'short' })} – ${fmtDate(run[run.length - 1] + 'T12:00', { day: 'numeric', month: 'short' })})`); };
   for (const k of T) {
     if (run.length && ymd(addDays(run[run.length - 1] + 'T12:00', 1)) === k) run.push(k); else { flush(); run = [k]; }
   }
@@ -837,7 +838,7 @@ function buildReport(c) {
   L.push(`- Este ciclo: **${cycleScore(c)}** ${c.complete ? '✅ completo' : c.closed ? '❌ incompleto' : '(aún abierto)'}`);
   L.push(`- Racha: ${plural(cycleStreak(cs), 'ciclo completo seguido', 'ciclos completos seguidos')}`);
   L.push(`- Últimos ${last8.length} ciclos (el último es este): ${last8.map((x) => `C${x.n} ${x.count}/${N} (${x.span} d)`).join(' · ')}`);
-  L.push(`- Descanso: ${viol.length ? '⚠️ ' + viol.join('; ') : 'sin avisos (nunca 3 días seguidos y Pierna con descanso antes o después)'}`);
+  L.push(`- Descanso: ${viol.length ? '⚠️ ' + viol.join('; ') : 'sin avisos (nunca más de 3 días seguidos y Pierna con descanso antes o después)'}`);
   L.push('');
   L.push('## Resumen de carga');
   L.push(`- Entrenos: ${list.length} · Tiempo total: ${fmtDur(mins)}`);
