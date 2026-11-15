@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = 41; // igual que VERSION en sw.js
+const APP_VERSION = 42; // igual que VERSION en sw.js
 
 /* ============ Estado y almacenamiento ============ */
 const KEY = 'gymlog.v1';
@@ -32,6 +32,7 @@ const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(3
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const num = (v) => { const n = parseFloat(String(v).replace(',', '.')); return isFinite(n) ? n : 0; };
+const filled = (v) => v !== '' && v != null;
 const fmtN = (n) => (Math.round(n * 10) / 10).toLocaleString('es-ES');
 const DAYS = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
 
@@ -826,8 +827,8 @@ function viewTrain() {
     const sets = ex.sets.map((st, j) => `
       <div class="set ${st.done ? 'done' : ''}">
         <span class="idx">${j + 1}</span>
-        <input inputmode="decimal" placeholder="${esc(st.pw || 'kg')}" data-wbind="w" data-i="${i}" data-j="${j}" value="${esc(st.w)}">
-        <input inputmode="numeric" placeholder="${esc(st.pr || 'reps')}" data-wbind="r" data-i="${i}" data-j="${j}" value="${esc(st.r)}">
+        <input inputmode="decimal" placeholder="${esc(st.pw || 'kg')}" data-wbind="w" data-i="${i}" data-j="${j}" value="${esc(st.w)}" class="${filled(st.w) ? 'filled' : ''}">
+        <input inputmode="numeric" placeholder="${esc(st.pr || 'reps')}" data-wbind="r" data-i="${i}" data-j="${j}" value="${esc(st.r)}" class="${filled(st.r) ? 'filled' : ''}">
         <button class="chk" data-act="setDone" data-i="${i}" data-j="${j}" aria-label="Serie hecha">✓</button>
       </div>`).join('');
     return `
@@ -1385,7 +1386,19 @@ document.addEventListener('input', (e) => {
     else routineDraft.exercises[+t.dataset.i][f] = t.value;
   } else if (t.dataset.wbind !== undefined && S.active) {
     const f = t.dataset.wbind;
-    if (t.dataset.j !== undefined) S.active.exercises[+t.dataset.i].sets[+t.dataset.j][f] = t.value;
+    if (t.dataset.j !== undefined) {
+      const ex = S.active.exercises[+t.dataset.i], st = ex.sets[+t.dataset.j];
+      st[f] = t.value;
+      if (f === 'w' || f === 'r') {
+        // Borde rojo en cada cuadro en cuanto tiene valor; ✓ automático al tener peso y reps
+        // (o solo reps si el ejercicio no tiene peso sugerido). Se actualiza sin redibujar para no cerrar el teclado.
+        t.classList.toggle('filled', filled(t.value));
+        const row = t.closest('.set');
+        const complete = filled(st.r) && (filled(st.w) || !st.pw);
+        if (complete && !st.done) { st.done = true; row.classList.add('done'); if (!S.active.past) startRest(ex.rest || 90); }
+        else if (!complete && st.done) { st.done = false; row.classList.remove('done'); }
+      }
+    }
     else if (t.dataset.i !== undefined) S.active.exercises[+t.dataset.i][f] = t.value;
     else if (f === 'date') { if (t.value) S.active.date = new Date(t.value).toISOString(); }
     else if (f === 'pdate' || f === 'pstart') {

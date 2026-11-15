@@ -146,7 +146,7 @@ label { display: block; font-size: 13px; color: var(--muted); margin: 8px 0 4px;
 .set .idx { color: var(--muted); text-align: center; font-size: 14px; }
 .set input { text-align: center; }
 .set .chk { min-height: 40px; padding: 0; font-size: 18px; }
-.set.done input { border-color: var(--ok); }
+.set input.filled { border-color: var(--accent); }
 .set.done .chk { background: var(--ok); border-color: var(--ok); color: #fff; }
 .set-head { display: grid; grid-template-columns: 28px 1fr 1fr 48px; gap: 8px; font-size: 12px; color: var(--muted); text-align: center; }
 .hint { font-size: 13px; color: var(--muted); margin: 2px 0 6px; }
