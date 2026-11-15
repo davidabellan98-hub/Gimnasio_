@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = 46; // igual que VERSION en sw.js
+const APP_VERSION = 47; // igual que VERSION en sw.js
 
 /* ============ Estado y almacenamiento ============ */
 const KEY = 'gymlog.v1';
@@ -221,6 +221,14 @@ function restPending(r, now = new Date()) {
   }
   return out;
 }
+// Cuenta atrás hasta que un grupo vuelve a estar descansado (se actualiza cada segundo en tick())
+const LOCK = '<svg class="lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
+function fmtCountdown(ms) {
+  const t = Math.max(0, Math.ceil(ms / 1000)), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+  return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+const countdownHtml = (until) => `<span class="cd" data-until="${until.getTime()}">${fmtCountdown(until - Date.now())}</span>`;
+const unlockAt = (pend) => new Date(Math.max(...pend.map((p) => p.until.getTime())));
 function whenText(d) {
   const k = daysBetween(new Date(), d), t = hhmm(d);
   return k <= 0 ? `hoy a las ${t}` : k === 1 ? `mañana a las ${t}` : `el ${fmtDate(d, { weekday: 'long' })} a las ${t}`;
@@ -230,7 +238,7 @@ function groupRestHtml(r) {
   if (!r) return '';
   const pend = restPending(r);
   if (!pend.length) return '';
-  let html = pend.map((p) => `<p class="alert">⚠︎ ${GROUPS[p.g]} lleva ${p.hours} h de descanso y necesita 48 h: listo ${whenText(p.until)}.</p>`).join('');
+  let html = pend.map((p) => `<p class="alert">${LOCK} ${GROUPS[p.g]} necesita 48 h de descanso. Se desbloquea en ${countdownHtml(p.until)}</p>`).join('');
   // No sugerir otra sesión si hoy ya entrenaste o si otra regla dice que hoy toca descanso
   const trainedToday = S.sessions.some((s) => ymd(s.date) === ymd(new Date()));
   if (trainedToday || restAlerts().some((t) => /hoy toca descanso/.test(t))) return html;
@@ -818,7 +826,10 @@ function viewTrain() {
   }
   if (!S.active) {
     const nx = nextRoutine();
-    const opts = S.routines.map((r) => `<button class="block pick ${r === nx ? 'is-next' : ''}" style="margin-bottom:8px;text-align:left" data-act="startRoutine" data-id="${r.id}"><b>${esc(r.name)}</b>${r === nx ? ' <span class="pill ok">Te toca</span>' : ''}<br><span class="muted small">${r.exercises.length} ${r.exercises.length === 1 ? "ejercicio" : "ejercicios"}${restPending(r).map((p) => ` · <span class="warn">${GROUPS[p.g]} listo ${whenText(p.until)}</span>`).join('')}</span></button>`).join('');
+    const opts = S.routines.map((r) => {
+      const pend = restPending(r);
+      return `<button class="block pick ${r === nx ? 'is-next' : ''} ${pend.length ? 'locked' : ''}" style="margin-bottom:8px;text-align:left" data-act="startRoutine" data-id="${r.id}"><b>${esc(r.name)}</b>${r === nx ? ' <span class="pill ok">Te toca</span>' : ''}<br><span class="muted small">${r.exercises.length} ${r.exercises.length === 1 ? "ejercicio" : "ejercicios"}</span>${pend.length ? `<br><span class="warn small unlock">${LOCK} Se desbloquea en ${countdownHtml(unlockAt(pend))}</span>` : ''}</button>`;
+    }).join('');
     return `
       <h2>¿Qué toca hoy?</h2>
       ${alertsHtml()}
@@ -1389,6 +1400,10 @@ let restEnd = 0;
 function startRest(sec) { restEnd = Date.now() + sec * 1000; tick(); }
 function stopRest() { restEnd = 0; $('#rest').classList.add('hidden'); }
 function tick() {
+  const cds = document.querySelectorAll('.cd');
+  let unlocked = false;
+  cds.forEach((c) => { const left = +c.dataset.until - Date.now(); c.textContent = fmtCountdown(left); if (left <= 0) unlocked = true; });
+  if (unlocked && (tab === 'home' || (tab === 'train' && !S.active))) render();
   const el = $('#elapsed');
   if (el && S.active) {
     if (S.active.startedAt) {
