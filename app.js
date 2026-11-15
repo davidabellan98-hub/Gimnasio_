@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = 45; // igual que VERSION en sw.js
+const APP_VERSION = 46; // igual que VERSION en sw.js
 
 /* ============ Estado y almacenamiento ============ */
 const KEY = 'gymlog.v1';
@@ -678,10 +678,15 @@ function viewHome() {
     }
   });
 
-  // Sesiones de los últimos 8 ciclos (la línea es el objetivo de sesiones por ciclo)
-  const last8 = cs.slice(-8);
-  const maxN = Math.max(N, ...last8.map((c) => c.count), 1);
-  const bars = last8.map((c) => `<div class="w ${c.complete ? 'met' : ''}"><span>${c.count}</span><div class="col"><s style="bottom:${(N / maxN) * 100}%"></s><b style="height:${(c.count / maxN) * 100}%"></b></div><span>C${c.n}</span></div>`).join('');
+  // Ciclos completos de cada uno de los últimos 6 meses (cuentan en el mes en que se cierran)
+  const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const nowD = new Date();
+  const months = Array.from({ length: 6 }, (_, k) => new Date(nowD.getFullYear(), nowD.getMonth() - 5 + k, 1)).map((m) => ({
+    label: MESES[m.getMonth()],
+    n: cs.filter((c) => c.complete && c.end.getFullYear() === m.getFullYear() && c.end.getMonth() === m.getMonth()).length,
+  }));
+  const maxM = Math.max(1, ...months.map((m) => m.n));
+  const bars = months.map((m) => `<div class="w ${m.n ? 'met' : ''}"><span>${m.n}</span><div class="col"><b style="height:${(m.n / maxM) * 100}%"></b></div><span>${m.label}</span></div>`).join('');
 
   const last = sorted()[0];
   return `
@@ -707,7 +712,7 @@ function viewHome() {
     </div>
     <h2>Constancia</h2>
     <div class="card"><div class="heat">${grid}</div></div>
-    ${last8.length ? `<h2>Sesiones por ciclo</h2>
+    ${cs.length ? `<h2>Ciclos completos por mes</h2>
     <div class="card"><div class="weeks">${bars}</div></div>` : ''}
     ${last ? `<h2>Último entreno</h2><div class="card"><b>${esc(last.routineName || 'Entrenamiento libre')}</b>
       <p class="muted">${fmtDate(last.date, { weekday: 'long', day: 'numeric', month: 'long' })} · ${fmtDur(last.duration)} · ${plural(sessSets(last), "serie", "series")}</p></div>` : ''}
@@ -1488,3 +1493,8 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 
 render();
+(function hideSplash() {
+  const sp = document.getElementById('splash'); if (!sp) return;
+  const wait = Math.max(0, 700 - (performance.now() - (window.__splashAt || 0)));
+  setTimeout(() => { sp.classList.add('out'); setTimeout(() => sp.remove(), 400); }, wait);
+})();
