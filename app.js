@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = 42; // igual que VERSION en sw.js
+const APP_VERSION = 43; // igual que VERSION en sw.js
 
 /* ============ Estado y almacenamiento ============ */
 const KEY = 'gymlog.v1';
@@ -416,8 +416,9 @@ function applyPlan(plan) {
   const key = (n) => n.trim().toLowerCase();
   for (const s of plan) {
     const i = S.routines.findIndex((r) => key(r.name) === key(s.name));
-    if (i >= 0) S.routines[i] = { ...S.routines[i], name: s.name, notes: s.notes || S.routines[i].notes || '', exercises: s.exercises, ...(s.groups ? { groups: s.groups } : {}) };
-    else S.routines.push({ id: uid(), ...s });
+    const updatedAt = new Date().toISOString();
+    if (i >= 0) S.routines[i] = { ...S.routines[i], name: s.name, notes: s.notes || S.routines[i].notes || '', exercises: s.exercises, ...(s.groups ? { groups: s.groups } : {}), updatedAt };
+    else S.routines.push({ id: uid(), ...s, updatedAt });
   }
   save();
 }
@@ -849,6 +850,7 @@ function viewTrain() {
   const head = a.past ? `
     <div class="card ex-card">
       <h3>${esc(a.routineName || 'Entrenamiento libre')}</h3>
+      ${a.base ? `<p class="muted small">${esc(a.base)}</p>` : ''}
       <label>Día</label>
       <input type="date" data-wbind="pdate" value="${ymd(a.date)}" max="${ymd(new Date())}">
       <div class="row">
@@ -858,7 +860,7 @@ function viewTrain() {
       <p class="muted small" style="margin-top:8px">Duración: <b id="pdur">${fmtDur(pastDuration(a))}</b></p>
     </div>` : `
     <div class="row between" style="margin-bottom:10px">
-      <div><b>${esc(a.routineName || 'Entrenamiento libre')}</b><br><span class="muted small">Tiempo: <span id="elapsed" class="elapsed">—</span></span></div>
+      <div><b>${esc(a.routineName || 'Entrenamiento libre')}</b><br><span class="muted small">Tiempo: <span id="elapsed" class="elapsed">—</span>${a.base ? ' · ' + esc(a.base) : ''}</span></div>
     </div>`;
   return `
     ${head}
@@ -1137,23 +1139,50 @@ function buildReport(c) {
 }
 
 /* ============ Acciones ============ */
+// Último entreno hecho con esta sesión (por id o por nombre)
+function lastSessionOf(routine) {
+  return sorted().find((s) => { const i = routineIndexOf(s); return i >= 0 && S.routines[i] === routine; });
+}
+// Prepara un entreno. La base (lo que sale en gris) es lo que hiciste la última vez en esa sesión:
+// mismos ejercicios, series, pesos y reps. Si el plan de la sesión cambió después (importado del
+// entrenador o editado), la base es el plan nuevo.
 function newActive(routine) {
   const a = { id: uid(), date: new Date().toISOString(), startedAt: Date.now(), routineId: routine ? routine.id : null, routineName: routine ? routine.name : '', exercises: [], notes: '', energy: '' };
-  if (routine) {
-    for (const e of routine.exercises) {
-      const n = Math.max(1, parseInt(e.sets, 10) || 3);
-      const reps = parseInt(e.reps, 10) || '';
-      const last = lastPerformance(e.name);
+  if (!routine) return a;
+  const key = (n) => n.trim().toLowerCase();
+  const planOf = (name) => routine.exercises.find((e) => key(e.name) === key(name));
+  const target = (e) => (e ? `${e.sets || '?'}×${e.reps || '?'}${num(e.weight) ? ' @ ' + fmtN(num(e.weight)) + ' kg' : ''}` : '');
+  const fromPlan = (e) => {
+    const n = Math.max(1, parseInt(e.sets, 10) || 3);
+    const reps = parseInt(e.reps, 10) || '';
+    const last = lastPerformance(e.name);
+    return {
+      name: e.name, rest: parseInt(e.rest, 10) || 90, notes: e.notes || '', target: target(e),
+      sets: Array.from({ length: n }, (_, j) => {
+        const ls = last && (last.ex.sets[j] || last.ex.sets[last.ex.sets.length - 1]);
+        const pw = num(e.weight) || (ls ? num(ls.w) : 0);
+        return { w: '', r: '', pw: pw ? fmtN(pw) : '', pr: reps || (ls ? ls.r : ''), done: false };
+      })
+    };
+  };
+  const last = lastSessionOf(routine);
+  const planNewer = routine.updatedAt && (!last || new Date(routine.updatedAt) > new Date(last.date));
+  if (last && !planNewer) {
+    a.base = `Base: tu último ${routine.name} (${fmtDate(last.date)})`;
+    const seen = new Set();
+    for (const ex of last.exercises) {
+      seen.add(key(ex.name));
+      const e = planOf(ex.name);
       a.exercises.push({
-        name: e.name, rest: parseInt(e.rest, 10) || 90, notes: e.notes || '',
-        target: `${e.sets || '?'}×${e.reps || '?'}${num(e.weight) ? ' @ ' + fmtN(num(e.weight)) + ' kg' : ''}`,
-        sets: Array.from({ length: n }, (_, j) => {
-          const ls = last && (last.ex.sets[j] || last.ex.sets[last.ex.sets.length - 1]);
-          const pw = num(e.weight) || (ls ? num(ls.w) : 0);
-          return { w: '', r: '', pw: pw ? fmtN(pw) : '', pr: reps || (ls ? ls.r : ''), done: false };
-        })
+        name: ex.name, rest: e ? parseInt(e.rest, 10) || 90 : 90, notes: e ? e.notes || '' : '', target: target(e),
+        sets: ex.sets.map((st) => ({ w: '', r: '', pw: num(st.w) ? fmtN(num(st.w)) : '', pr: num(st.r) || '', done: false }))
       });
     }
+    // ejercicios del plan que no hiciste la última vez
+    for (const e of routine.exercises) if (!seen.has(key(e.name))) a.exercises.push(fromPlan(e));
+  } else {
+    a.base = last || routine.updatedAt ? `Base: plan actualizado${routine.updatedAt ? ' el ' + fmtDate(routine.updatedAt) : ''}` : 'Base: el plan de la sesión';
+    for (const e of routine.exercises) a.exercises.push(fromPlan(e));
   }
   return a;
 }
@@ -1216,6 +1245,8 @@ const actions = {
     r.name = r.name.trim() || 'Sesión sin nombre';
     r.exercises = r.exercises.filter((e) => e.name.trim());
     const i = S.routines.findIndex((x) => x.id === r.id);
+    const plan = (x) => JSON.stringify(x.exercises.map((e) => [e.name.trim().toLowerCase(), String(e.sets), String(e.reps), String(num(e.weight))]));
+    if (i < 0 || plan(S.routines[i]) !== plan(r)) r.updatedAt = new Date().toISOString();
     if (i >= 0) S.routines[i] = r; else S.routines.push(r);
     save(); toast('Sesión guardada'); go('routines');
   },
